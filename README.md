@@ -153,6 +153,32 @@ npm start
 
 ---
 
+## Android APK / Windows EXE
+
+个人使用的原生安装包已经构建：
+
+- **Android APK**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
+- **Windows 便携版**：[LUMEN-ATLAS-Windows-20261018.zip](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Windows-20261018.zip)
+- **校验和**：[SHA256SUMS-APPS-20261018.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261018.txt)
+
+### Android
+
+- Android 7.0+，需要系统 Chrome / WebView
+- 下载 APK 后允许“安装未知来源应用”
+- 使用 Trusted Web Activity，打开后是全屏独立应用
+- 包名：`asia.chemcraze.lumen`
+- 使用同一账号与线上数据
+
+### Windows
+
+- Windows 10/11 x64
+- 下载 zip，完整解压后运行 `LUMEN ATLAS.exe`
+- 这是免安装便携版，不需要单独安装器
+- 首次运行可能被 SmartScreen 拦截，选择“更多信息 → 仍要运行”
+- 使用同一账号与线上数据
+
+原生壳源码分别在 `android/` 和 `desktop/`，APK 使用本地 keystore 签名，Windows 版为 Electron 便携包。
+
 ## 首次部署配置页
 
 空数据库（还没有任何用户）时，打开：

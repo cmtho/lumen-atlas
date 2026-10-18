@@ -1,0 +1,10 @@
+{
+  "name": "lumen-atlas-desktop",
+  "productName": "LUMEN ATLAS",
+  "version": "1.0.0",
+  "description": "LUMEN ATLAS desktop shell",
+  "main": "main.js",
+  "author": "cmtho",
+  "license": "MIT",
+  "private": true
+}

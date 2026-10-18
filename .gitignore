@@ -19,3 +19,16 @@ data/*.pre-multiuser-*.json
 
 # local release archives
 releases/
+android/.gradle/
+android/build/
+android/app/build/
+android/*.keystore
+android/keystore-password.txt
+desktop-dist/
+desktop/node_modules/
+android/local.properties
+android/.idea/
+android/*.apk
+android/*.aab
+android/app-release*
+android/app/*.apk

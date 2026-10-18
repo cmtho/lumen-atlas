@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "asia.chemcraze.lumen",
+      "sha256_cert_fingerprints": ["AF:7B:F2:C6:DD:DF:1C:74:C5:39:DC:FD:B7:43:1E:FC:92:EA:3F:F0:27:51:B8:53:36:74:1D:45:71:4F:58:28"]
+    }
+  }
+]
