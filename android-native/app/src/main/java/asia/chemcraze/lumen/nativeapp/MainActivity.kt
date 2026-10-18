@@ -6,9 +6,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -92,6 +94,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -103,7 +106,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -112,6 +117,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -121,6 +127,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -1326,34 +1333,102 @@ private fun StatCard(value: String, label: String, modifier: Modifier = Modifier
 
 @Composable
 private fun PhotoDialog(photo: Photo, onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF010409))) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(photo.image).crossfade(true).build(),
-                contentDescription = photo.title,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-            Row(Modifier.statusBarsPadding().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose, modifier = Modifier.background(Color.Black.copy(alpha = .45f), CircleShape)) {
-                    Icon(Icons.Outlined.ArrowBack, "返回", tint = Color.White)
-                }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onClose, modifier = Modifier.background(Color.Black.copy(alpha = .45f), CircleShape)) {
-                    Icon(Icons.Outlined.Close, "关闭", tint = Color.White)
-                }
-            }
+    val view = LocalView.current
+    SideEffect {
+        val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+        window.setDimAmount(0.34f)
+        window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        if (Build.VERSION.SDK_INT >= 31) {
+            window.attributes = window.attributes.apply { blurBehindRadius = 34 }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Box(
+            Modifier.fillMaxSize().background(Color(0x33000000)).navigationBarsPadding().padding(18.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Column(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF0010409))))
-                    .navigationBarsPadding().padding(20.dp),
+                Modifier.fillMaxWidth()
+                    .shadow(28.dp, RoundedCornerShape(30.dp), clip = false)
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xE6152E42), Color(0xE6091522), Color(0xE60D1B2C)),
+                        ),
+                    )
+                    .border(
+                        1.dp,
+                        Brush.linearGradient(
+                            listOf(Color.White.copy(alpha = .38f), Cyan.copy(alpha = .25f), Violet.copy(alpha = .28f)),
+                        ),
+                        RoundedCornerShape(30.dp),
+                    )
+                    .padding(10.dp),
             ) {
-                Text(photo.title, color = Ink, fontSize = 22.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(4.dp))
-                Text(photo.place, color = Cyan.copy(alpha = .85f), fontSize = 11.sp)
-                if (photo.capturedAt.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(photo.capturedAt.take(10), color = Soft, fontSize = 10.sp)
+                Box(
+                    Modifier.fillMaxWidth().height(320.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(Color(0xFF02060E)),
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current).data(photo.image).crossfade(true).build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().blur(26.dp),
+                    )
+                    Box(Modifier.fillMaxSize().background(Color(0x99020811)))
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current).data(photo.image).crossfade(true).build(),
+                        contentDescription = photo.title,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                listOf(Color(0x88020811), Color.Transparent, Color.Transparent, Color(0xB3020811)),
+                            ),
+                        ),
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("FLUID FRAME / 悬浮影像", color = Color.White.copy(alpha = .75f), fontSize = 8.sp, letterSpacing = 1.sp)
+                        Spacer(Modifier.weight(1f))
+                        IconButton(
+                            onClick = onClose,
+                            modifier = Modifier.size(32.dp).background(Color.Black.copy(alpha = .38f), CircleShape)
+                                .border(1.dp, Color.White.copy(alpha = .18f), CircleShape),
+                        ) {
+                            Icon(Icons.Outlined.Close, "关闭", tint = Color.White, modifier = Modifier.size(17.dp))
+                        }
+                    }
+                    Row(
+                        Modifier.align(Alignment.BottomStart).padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        photo.tags.take(3).forEach { tag ->
+                            Text(
+                                "#$tag",
+                                color = Cyan.copy(alpha = .9f),
+                                fontSize = 8.sp,
+                                modifier = Modifier.background(Color(0x99030A12), RoundedCornerShape(50))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp),
+                            )
+                        }
+                    }
+                }
+                Column(Modifier.padding(horizontal = 9.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(photo.title, color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text(photo.capturedAt.take(10), color = Soft.copy(alpha = .85f), fontSize = 9.sp)
+                    }
+                    Text(photo.place, color = Cyan.copy(alpha = .85f), fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

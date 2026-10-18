@@ -157,7 +157,7 @@ npm start
 
 个人使用的原生安装包已经构建：
 
-- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v4.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v4.apk)
+- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v5.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v5.apk)
 - **轻量 TWA 版**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
 - **Windows 便携版**：[LUMEN-ATLAS-Windows-20261018.zip](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Windows-20261018.zip)
 - **校验和**：[SHA256SUMS-APPS-20261018.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261018.txt)
@@ -168,7 +168,8 @@ npm start
 - Compose 原生登录、档案、上传、个人页
 - 球体地图由 WebView 承载，完整保留 LUMEN 的 globe 和中国行政区细节
 - 地图内可切换 **LUMEN 球体 / 高德中国底图**
-- 地图底部有最近影像轮播，点击打开原生大图；地图标记点击直接走原生大图
+- 地图底部有最近影像轮播，点击打开悬浮液态玻璃大图；地图标记点击直接走原生大图
+- 悬浮液态玻璃图片查看器：背景虚化、渐变玻璃卡、圆角浮层
 - 档案页支持标题 / 地点 / 标签搜索，以及按旅人筛选
 - 地图顶部搜索入口，可搜索影像、地点、人物、标签
 - 原生邀请码：生成、设置有效期 / 次数、复制链接、撤销
