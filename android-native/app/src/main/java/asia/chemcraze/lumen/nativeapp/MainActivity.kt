@@ -1,14 +1,21 @@
 package asia.chemcraze.lumen.nativeapp
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -34,6 +41,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -50,6 +58,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.ExitToApp
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.PersonOutline
@@ -58,6 +72,7 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -83,6 +98,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -333,7 +349,12 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
     var data by remember { mutableStateOf(initial) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selectedPhoto by remember { mutableStateOf<Photo?>(null) }
+    var showSearch by remember { mutableStateOf(false) }
+    var showInvites by remember { mutableStateOf(false) }
+    var showAdmin by remember { mutableStateOf(false) }
+    var showEdit by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    val isStaff = data.account.role == "owner" || data.account.role == "admin"
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -377,7 +398,7 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
         ) { inner ->
             Box(Modifier.fillMaxSize().padding(inner)) {
                 when (tab) {
-                    0 -> GlobeScreen(data, onPhoto = { selectedPhoto = it })
+                    0 -> GlobeScreen(data, onPhoto = { selectedPhoto = it }, onSearch = { showSearch = true })
                     1 -> ArchiveScreen(data, onPhoto = { selectedPhoto = it }, onRefresh = { refresh() })
                     2 -> UploadScreen(
                         onUploaded = { count ->
@@ -387,7 +408,11 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
                     )
                     else -> ProfileScreen(
                         data = data,
+                        isStaff = isStaff,
                         onRefresh = { refresh() },
+                        onEdit = { showEdit = true },
+                        onInvites = { showInvites = true },
+                        onAdmin = { showAdmin = true },
                         onOpenWeb = {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Api.BASE)))
                         },
@@ -401,16 +426,51 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
     selectedPhoto?.let { photo ->
         PhotoDialog(photo = photo, onClose = { selectedPhoto = null })
     }
+    if (showSearch) {
+        SearchDialog(data = data, onPhoto = { selectedPhoto = it; showSearch = false }, onClose = { showSearch = false })
+    }
+    if (showEdit) {
+        EditProfileDialog(
+            profile = data.profile,
+            onSaved = { data = data.copy(profile = it); showEdit = false },
+            onClose = { showEdit = false },
+        )
+    }
+    if (showInvites) {
+        InviteDialog(
+            siteOrigin = Api.BASE,
+            initial = data.invites,
+            onUpdated = { data = data.copy(invites = it) },
+            onClose = { showInvites = false },
+        )
+    }
+    if (showAdmin && isStaff) {
+        AdminDialog(
+            currentUsername = data.account.username,
+            currentRole = data.account.role,
+            onClose = { showAdmin = false },
+        )
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit) {
+private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onSearch: () -> Unit) {
     val context = LocalContext.current
     val loading = remember { mutableStateOf(true) }
     var provider by rememberSaveable { mutableStateOf("libre") }
+    val latestData = rememberUpdatedState(data)
+    val latestOnPhoto = rememberUpdatedState(onPhoto)
     val webView = remember {
         WebView(context).apply {
+            addJavascriptInterface(object {
+                @JavascriptInterface
+                fun openPhoto(id: String) {
+                    Handler(Looper.getMainLooper()).post {
+                        latestData.value.photos.firstOrNull { it.id == id }?.let { latestOnPhoto.value(it) }
+                    }
+                }
+            }, "LumenBridge")
             setBackgroundColor(0xFF02060E.toInt())
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -470,6 +530,9 @@ private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit) {
                         Text(if (provider == "libre") "全球球体 / 原生客户端" else "高德中国底图 / 原生客户端", color = Soft, fontSize = 9.sp)
                     }
                     Spacer(Modifier.weight(1f))
+                    IconButton(onClick = onSearch, modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Outlined.Search, "搜索", tint = Cyan, modifier = Modifier.size(17.dp))
+                    }
                     Text("${data.photos.size} 帧", color = Cyan, fontSize = 10.sp)
                 }
             }
@@ -488,6 +551,7 @@ private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit) {
                 modifier = Modifier.padding(horizontal = 13.dp, vertical = 5.dp),
             )
             if (data.photos.isNotEmpty()) {
+                Text("最近影像 · 点击查看", color = Cyan.copy(alpha = .9f), fontSize = 8.sp, modifier = Modifier.padding(start = 13.dp, top = 5.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -532,10 +596,14 @@ private fun ProviderPill(label: String, active: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ArchiveScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onRefresh: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val filtered = remember(query, data.photos) {
+    var personId by rememberSaveable { mutableStateOf<String?>(null) }
+    val filtered = remember(query, personId, data.photos) {
         val term = query.trim().lowercase()
-        if (term.isBlank()) data.photos else data.photos.filter {
-            listOf(it.title, it.place, it.tags.joinToString(" ")).joinToString(" ").lowercase().contains(term)
+        data.photos.filter { photo ->
+            val matchesQuery = term.isBlank() || listOf(photo.title, photo.place, photo.tags.joinToString(" "))
+                .joinToString(" ").lowercase().contains(term)
+            val matchesPerson = personId == null || photo.personIds.contains(personId)
+            matchesQuery && matchesPerson
         }
     }
     LazyVerticalGrid(
@@ -546,7 +614,7 @@ private fun ArchiveScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onRefresh: 
         modifier = Modifier.fillMaxSize(),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("影像档案", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp)
@@ -572,6 +640,16 @@ private fun ArchiveScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onRefresh: 
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    item {
+                        PersonFilterChip("全部", null, active = personId == null) { personId = null }
+                    }
+                    items(data.people, key = { it.id }) { person ->
+                        PersonFilterChip(person.name, parseHex(person.color), active = personId == person.id) {
+                            personId = if (personId == person.id) null else person.id
+                        }
+                    }
+                }
             }
         }
         if (filtered.isEmpty()) {
@@ -581,7 +659,7 @@ private fun ArchiveScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onRefresh: 
                         Icon(Icons.Outlined.PhotoLibrary, null, tint = Cyan, modifier = Modifier.size(38.dp))
                         Spacer(Modifier.height(12.dp))
                         Text(if (data.photos.isEmpty()) "这里还没有影像" else "没有匹配的影像", color = Ink, fontSize = 16.sp)
-                        Text(if (data.photos.isEmpty()) "从下方“上传”写入第一张照片" else "换一个关键词试试", color = Soft, fontSize = 11.sp)
+                        Text(if (data.photos.isEmpty()) "从下方“上传”写入第一张照片" else "换关键词或人物试试", color = Soft, fontSize = 11.sp)
                     }
                 }
             }
@@ -591,6 +669,28 @@ private fun ArchiveScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onRefresh: 
         }
     }
 }
+
+@Composable
+private fun PersonFilterChip(label: String, color: Color?, active: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(50))
+            .background(if (active) Color(0xE60A1725) else Color(0x9906111D))
+            .border(1.dp, if (active) Cyan.copy(alpha = .5f) else Color.White.copy(alpha = .12f), RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 11.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (color != null) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(color))
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(label, color = if (active) Cyan else Soft, fontSize = 10.sp)
+    }
+}
+
+private fun parseHex(value: String): Color = runCatching {
+    Color(android.graphics.Color.parseColor(value))
+}.getOrDefault(Cyan)
 
 @Composable
 private fun PhotoCard(photo: Photo, onClick: () -> Unit) {
@@ -791,7 +891,7 @@ private fun UploadScreen(onUploaded: (Int) -> Unit) {
 }
 
 @Composable
-private fun ProfileScreen(data: Bootstrap, onRefresh: () -> Unit, onOpenWeb: () -> Unit, onLogout: () -> Unit) {
+private fun ProfileScreen(data: Bootstrap, isStaff: Boolean, onRefresh: () -> Unit, onEdit: () -> Unit, onInvites: () -> Unit, onAdmin: () -> Unit, onOpenWeb: () -> Unit, onLogout: () -> Unit) {
     val profile = data.profile
     val countries = data.photos.map { it.country }.filter { it.isNotBlank() }.distinct().size
     Column(
@@ -836,11 +936,24 @@ private fun ProfileScreen(data: Bootstrap, onRefresh: () -> Unit, onOpenWeb: () 
         }
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(12.dp)) {
+                        Icon(Icons.Outlined.Edit, null, tint = Cyan, modifier = Modifier.size(15.dp)); Spacer(Modifier.width(5.dp)); Text("编辑资料", color = Ink, fontSize = 11.sp)
+                    }
+                    OutlinedButton(onClick = onInvites, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(12.dp)) {
+                        Icon(Icons.Outlined.Group, null, tint = Cyan, modifier = Modifier.size(15.dp)); Spacer(Modifier.width(5.dp)); Text("邀请码", color = Ink, fontSize = 11.sp)
+                    }
+                }
+                if (isStaff) {
+                    OutlinedButton(onClick = onAdmin, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(13.dp)) {
+                        Icon(Icons.Outlined.AdminPanelSettings, null, tint = Violet); Spacer(Modifier.width(7.dp)); Text("后台管理", color = Ink)
+                    }
+                }
                 OutlinedButton(onClick = onRefresh, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(13.dp)) {
                     Icon(Icons.Outlined.Refresh, null, tint = Soft); Spacer(Modifier.width(7.dp)); Text("刷新数据", color = Ink)
                 }
                 OutlinedButton(onClick = onOpenWeb, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(13.dp)) {
-                    Icon(Icons.Outlined.Language, null, tint = Soft); Spacer(Modifier.width(7.dp)); Text("打开网页版 / 管理后台", color = Ink)
+                    Icon(Icons.Outlined.Language, null, tint = Soft); Spacer(Modifier.width(7.dp)); Text("打开网页版", color = Ink)
                 }
                 TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.ExitToApp, null, tint = Danger); Spacer(Modifier.width(7.dp)); Text("退出登录", color = Danger)
@@ -848,6 +961,356 @@ private fun ProfileScreen(data: Bootstrap, onRefresh: () -> Unit, onOpenWeb: () 
             }
         }
         Text("LUMEN ATLAS · 原生 Android UI", color = Soft.copy(alpha = .6f), fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+    }
+}
+
+@Composable
+private fun SearchDialog(data: Bootstrap, onPhoto: (Photo) -> Unit, onClose: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val peopleById = remember(data.people) { data.people.associateBy { it.id } }
+    val results = remember(query, data.photos) {
+        val term = query.trim().lowercase()
+        if (term.isBlank()) data.photos.take(20) else data.photos.filter { photo ->
+            val personNames = photo.personIds.mapNotNull { peopleById[it]?.name }.joinToString(" ")
+            listOf(photo.title, photo.place, photo.tags.joinToString(" "), personNames).joinToString(" ").lowercase().contains(term)
+        }
+    }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Bg)) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回", tint = Ink) }
+                    Text("搜索", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Light)
+                    Spacer(Modifier.weight(1f))
+                    Text("${results.size} 条", color = Soft, fontSize = 10.sp)
+                }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("影像、地点、人物、标签", fontSize = 12.sp, color = Soft) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Cyan) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cyan,
+                        unfocusedBorderColor = Color.White.copy(alpha = .14f),
+                        focusedTextColor = Ink,
+                        unfocusedTextColor = Ink,
+                        focusedContainerColor = Color(0xFF06111D),
+                        unfocusedContainerColor = Color(0xFF06111D),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (data.people.isNotEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        items(data.people, key = { it.id }) { person ->
+                            PersonFilterChip(person.name, parseHex(person.color), active = false) {
+                                query = person.name
+                            }
+                        }
+                    }
+                }
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(results, key = { it.id }) { photo ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                                .background(Color.White.copy(alpha = .045f))
+                                .clickable { onPhoto(photo) }
+                                .padding(9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current).data(photo.thumb).crossfade(true).build(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(9.dp)),
+                            )
+                            Spacer(Modifier.width(11.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(photo.title, color = Ink, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(photo.place, color = Soft, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    if (results.isEmpty()) {
+                        item {
+                            GlassCard(Modifier.fillMaxWidth()) {
+                                Text("没有匹配的影像", color = Soft, fontSize = 12.sp, modifier = Modifier.padding(24.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditProfileDialog(profile: Profile, onSaved: (Profile) -> Unit, onClose: () -> Unit) {
+    var name by remember { mutableStateOf(profile.name) }
+    var handle by remember { mutableStateOf(profile.handle) }
+    var bio by remember { mutableStateOf(profile.bio) }
+    var home by remember { mutableStateOf(profile.home) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Bg)) {
+            Column(
+                Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
+                    .verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回", tint = Ink) }
+                    Text("编辑资料", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Light)
+                }
+                Text("头像仍可在网页版个人页更换。", color = Soft, fontSize = 9.sp)
+                LumenField(name, { name = it }, "显示名称")
+                LumenField(handle, { handle = it }, "Handle / 用户名别名")
+                LumenField(home, { home = it }, "所在城市 / 家乡")
+                OutlinedTextField(
+                    value = bio,
+                    onValueChange = { bio = it },
+                    label = { Text("个人简介") },
+                    minLines = 3,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cyan,
+                        unfocusedBorderColor = Color.White.copy(alpha = .14f),
+                        focusedLabelColor = Cyan,
+                        unfocusedLabelColor = Soft,
+                        focusedTextColor = Ink,
+                        unfocusedTextColor = Ink,
+                        focusedContainerColor = Color(0xFF06111D),
+                        unfocusedContainerColor = Color(0xFF06111D),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (error != null) Text(error!!, color = Danger, fontSize = 11.sp)
+                Button(
+                    onClick = {
+                        busy = true; error = null
+                        scope.launch {
+                            try { onSaved(Api.updateProfile(name, handle, bio, home)) }
+                            catch (e: Exception) { error = e.message ?: "保存失败" }
+                            finally { busy = false }
+                        }
+                    },
+                    enabled = !busy,
+                    shape = RoundedCornerShape(13.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF031018)),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                ) {
+                    if (busy) CircularProgressIndicator(Modifier.size(19.dp), color = Color(0xFF031018), strokeWidth = 2.dp)
+                    else Text("保存资料", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InviteDialog(siteOrigin: String, initial: List<Invite>, onUpdated: (List<Invite>) -> Unit, onClose: () -> Unit) {
+    var invites by remember { mutableStateOf(initial) }
+    var days by remember { mutableStateOf("14") }
+    var uses by remember { mutableStateOf("1") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Bg)) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回", tint = Ink) }
+                    Text("邀请码", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Light)
+                    Spacer(Modifier.weight(1f))
+                    Text("${invites.size} 个", color = Soft, fontSize = 10.sp)
+                }
+                GlassCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("生成新邀请码", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = days,
+                                onValueChange = { days = it.filter(Char::isDigit).take(3) },
+                                label = { Text("有效期 / 天") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(11.dp),
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cyan, unfocusedBorderColor = Color.White.copy(alpha = .14f), focusedTextColor = Ink, unfocusedTextColor = Ink),
+                            )
+                            OutlinedTextField(
+                                value = uses,
+                                onValueChange = { uses = it.filter(Char::isDigit).take(3) },
+                                label = { Text("可用次数") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(11.dp),
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cyan, unfocusedBorderColor = Color.White.copy(alpha = .14f), focusedTextColor = Ink, unfocusedTextColor = Ink),
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                busy = true; error = null
+                                scope.launch {
+                                    try {
+                                        val created = Api.createInvite((days.toIntOrNull() ?: 14).coerceIn(1, 365), (uses.toIntOrNull() ?: 1).coerceIn(1, 100))
+                                        invites = listOf(created) + invites
+                                        onUpdated(invites)
+                                    } catch (e: Exception) { error = e.message ?: "生成失败" }
+                                    finally { busy = false }
+                                }
+                            },
+                            enabled = !busy,
+                            shape = RoundedCornerShape(11.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF031018)),
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                        ) {
+                            if (busy) CircularProgressIndicator(Modifier.size(17.dp), color = Color(0xFF031018), strokeWidth = 2.dp)
+                            else Text("生成邀请码", fontWeight = FontWeight.Bold)
+                        }
+                        if (error != null) Text(error!!, color = Danger, fontSize = 10.sp)
+                    }
+                }
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(invites, key = { it.id }) { invite ->
+                        GlassCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(invite.code, color = Ink, fontSize = 16.sp, letterSpacing = 1.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        if (invite.active) "可用 ${invite.remaining}/${invite.maxUses}" else if (invite.uses >= invite.maxUses) "已用完" else "不可用",
+                                        color = if (invite.active) Cyan else Soft,
+                                        fontSize = 9.sp,
+                                    )
+                                }
+                                Text("${invite.expiresAt.take(10)} 到期 · 已用 ${invite.uses}/${invite.maxUses} 次", color = Soft, fontSize = 9.sp)
+                                if (invite.usedBy.isNotEmpty()) Text("@" + invite.usedBy.joinToString(", @"), color = Soft, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(onClick = {
+                                        val text = "$siteOrigin/?invite=${invite.code}"
+                                        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                                            .setPrimaryClip(ClipData.newPlainText("LUMEN invite", text))
+                                        Toast.makeText(context, "邀请链接已复制", Toast.LENGTH_SHORT).show()
+                                    }) { Text("复制链接", color = Cyan, fontSize = 10.sp) }
+                                    if (invite.active) {
+                                        TextButton(onClick = {
+                                            scope.launch {
+                                                try { Api.revokeInvite(invite.id); invites = invites.filter { it.id != invite.id }; onUpdated(invites) }
+                                                catch (e: Exception) { error = e.message ?: "撤销失败" }
+                                            }
+                                        }) { Text("撤销", color = Danger, fontSize = 10.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (invites.isEmpty()) {
+                        item { Text("还没有邀请码", color = Soft, fontSize = 11.sp, modifier = Modifier.padding(20.dp)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminDialog(currentUsername: String, currentRole: String, onClose: () -> Unit) {
+    var users by remember { mutableStateOf<List<AdminUser>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var deleteTarget by remember { mutableStateOf<AdminUser?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun load() {
+        loading = true; error = null
+        scope.launch {
+            try { users = Api.adminUsers() } catch (e: Exception) { error = e.message ?: "读取失败" }
+            finally { loading = false }
+        }
+    }
+    LaunchedEffect(Unit) { load() }
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Bg)) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回", tint = Ink) }
+                    Column {
+                        Text("后台管理", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Light)
+                        Text("${users.size} 个账号 · 当前 ${currentRole.uppercase()}", color = Soft, fontSize = 9.sp)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = { load() }) { Icon(Icons.Outlined.Refresh, "刷新", tint = Cyan) }
+                }
+                if (error != null) Text(error!!, color = Danger, fontSize = 11.sp)
+                if (loading) {
+                    Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Cyan, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                    }
+                }
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(users, key = { it.id }) { user ->
+                        val self = user.username == currentUsername
+                        val owner = user.role == "owner"
+                        GlassCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(user.name, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                        Text("@${user.username} · ${user.role.uppercase()}", color = if (user.role == "owner") Violet else Soft, fontSize = 8.sp)
+                                    }
+                                    if (user.disabled) Text("已禁用", color = Danger, fontSize = 9.sp)
+                                }
+                                Text("${user.photos} 影像 · ${user.people} 旅人", color = Soft, fontSize = 8.sp)
+                                if (!self && !owner) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        TextButton(onClick = {
+                                            scope.launch {
+                                                try {
+                                                    Api.adminUpdateUser(user.id, role = if (user.role == "member") "admin" else "member")
+                                                    load()
+                                                } catch (e: Exception) { error = e.message ?: "操作失败" }
+                                            }
+                                        }) { Text(if (user.role == "member") "设为管理员" else "设为成员", color = Cyan, fontSize = 9.sp) }
+                                        TextButton(onClick = {
+                                            scope.launch {
+                                                try { Api.adminUpdateUser(user.id, disabled = !user.disabled); load() }
+                                                catch (e: Exception) { error = e.message ?: "操作失败" }
+                                            }
+                                        }) { Text(if (user.disabled) "启用" else "禁用", color = if (user.disabled) Cyan else Soft, fontSize = 9.sp) }
+                                        TextButton(onClick = { deleteTarget = user }) { Text("删除", color = Danger, fontSize = 9.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("删除账号") },
+            text = { Text("删除 @${target.username} 及其照片、人物和邀请码？此操作不可恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteTarget = null
+                    scope.launch {
+                        try { Api.adminDeleteUser(target.id); load() }
+                        catch (e: Exception) { error = e.message ?: "删除失败" }
+                    }
+                }) { Text("删除", color = Danger) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
+        )
     }
 }
 

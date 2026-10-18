@@ -142,7 +142,13 @@ export default function App() {
     setSelectedPlaceKey(null);
   }, []);
 
-  const openPhoto = (id) => { setPhotoId(id); };
+  const openPhoto = (id) => {
+    if (EMBED_MAP && typeof window !== 'undefined' && window.LumenBridge?.openPhoto) {
+      window.LumenBridge.openPhoto(String(id));
+      return;
+    }
+    setPhotoId(id);
+  };
 
   const handleProvinceClick = (name) => {
     const candidates = places.filter(p => p.province === name || p.country === name);

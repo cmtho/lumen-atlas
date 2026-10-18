@@ -57,6 +57,30 @@ data class Photo(
 
 data class Person(val id: String, val name: String, val color: String)
 
+data class Invite(
+    val id: String,
+    val code: String,
+    val createdAt: String,
+    val expiresAt: String,
+    val maxUses: Int,
+    val uses: Int,
+    val revokedAt: String?,
+    val active: Boolean,
+    val usedBy: List<String>,
+) {
+    val remaining: Int get() = (maxUses - uses).coerceAtLeast(0)
+}
+
+data class AdminUser(
+    val id: String,
+    val username: String,
+    val name: String,
+    val role: String,
+    val disabled: Boolean,
+    val photos: Int,
+    val people: Int,
+)
+
 data class PlaceResult(
     val label: String,
     val detail: String,
@@ -75,6 +99,7 @@ data class Bootstrap(
     val account: Account,
     val photos: List<Photo>,
     val people: List<Person>,
+    val invites: List<Invite>,
     val siteName: String,
 )
 
@@ -141,6 +166,7 @@ object Api {
         val people = root.optJSONArray("people") ?: JSONArray()
         val photos = root.optJSONArray("photos") ?: JSONArray()
         val site = root.optJSONObject("site")
+        val invites = root.optJSONArray("invites") ?: JSONArray()
         return Bootstrap(
             profile = Profile(
                 name = profile.optString("name", "旅人"),
@@ -156,6 +182,7 @@ object Api {
                 val p = people.getJSONObject(it)
                 Person(p.optString("id"), p.optString("name"), p.optString("color", "#65f4ff"))
             },
+            invites = (0 until invites.length()).map { invites.getJSONObject(it).toInvite() },
             siteName = site?.optString("siteName")?.takeIf { it.isNotBlank() } ?: "LUMEN ATLAS",
         )
     }
@@ -181,6 +208,86 @@ object Api {
             tags = tags,
             personIds = personIds,
         )
+    }
+
+    private fun JSONObject.toInvite(): Invite {
+        val usedBy = mutableListOf<String>()
+        optJSONArray("usedBy")?.let { arr -> for (i in 0 until arr.length()) usedBy += arr.optString(i) }
+        return Invite(
+            id = optString("id"),
+            code = optString("code"),
+            createdAt = optString("createdAt"),
+            expiresAt = optString("expiresAt"),
+            maxUses = optInt("maxUses", 1),
+            uses = optInt("uses", 0),
+            revokedAt = if (isNull("revokedAt")) null else optString("revokedAt"),
+            active = optBoolean("active", false),
+            usedBy = usedBy,
+        )
+    }
+
+    private suspend fun patchJson(path: String, body: JSONObject): String {
+        return execute(
+            Request.Builder().url(BASE + path)
+                .patch(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+        )
+    }
+
+    suspend fun updateProfile(name: String, handle: String, bio: String, home: String): Profile {
+        val body = JSONObject().put("name", name).put("handle", handle).put("bio", bio).put("home", home)
+        val text = patchJson("/api/profile", body)
+        val p = JSONObject(text).getJSONObject("profile")
+        return Profile(
+            name = p.optString("name", "旅人"),
+            handle = p.optString("handle", ""),
+            bio = p.optString("bio", ""),
+            home = p.optString("home", ""),
+            avatarColor = p.optString("avatarColor", "#65f4ff"),
+            avatarUrl = p.optString("avatarUrl").takeIf { it.isNotBlank() }?.absolute(),
+        )
+    }
+
+    suspend fun createInvite(expiresDays: Int, maxUses: Int): Invite {
+        val body = JSONObject().put("expiresDays", expiresDays).put("maxUses", maxUses)
+        val text = execute(
+            Request.Builder().url("$BASE/api/invites")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+        )
+        return JSONObject(text).getJSONObject("invite").toInvite()
+    }
+
+    suspend fun revokeInvite(id: String) {
+        execute(Request.Builder().url("$BASE/api/invites/$id").delete().build())
+    }
+
+    suspend fun adminUsers(): List<AdminUser> {
+        val text = execute(Request.Builder().url("$BASE/api/admin/users").get().build())
+        val arr = JSONObject(text).optJSONArray("users") ?: return emptyList()
+        return (0 until arr.length()).map {
+            val u = arr.getJSONObject(it)
+            AdminUser(
+                id = u.optString("id"),
+                username = u.optString("username"),
+                name = u.optString("name", u.optString("username")),
+                role = u.optString("role", "member"),
+                disabled = u.optBoolean("disabled", false),
+                photos = u.optInt("photos", 0),
+                people = u.optInt("people", 0),
+            )
+        }
+    }
+
+    suspend fun adminUpdateUser(id: String, role: String? = null, disabled: Boolean? = null) {
+        val body = JSONObject()
+        if (role != null) body.put("role", role)
+        if (disabled != null) body.put("disabled", disabled)
+        patchJson("/api/admin/users/$id", body)
+    }
+
+    suspend fun adminDeleteUser(id: String) {
+        execute(Request.Builder().url("$BASE/api/admin/users/$id").delete().build())
     }
 
     private fun String.absolute(): String = when {
