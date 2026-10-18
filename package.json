@@ -33,10 +33,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zqy20081015/lumen-atlas.git"
+    "url": "https://github.com/cmtho/lumen-atlas.git"
   },
   "homepage": "https://lumen.chemcraze.asia",
   "bugs": {
-    "url": "https://github.com/zqy20081015/lumen-atlas/issues"
+    "url": "https://github.com/cmtho/lumen-atlas/issues"
   }
 }
