@@ -489,7 +489,7 @@ sudo systemctl start lumen-atlas
 
 ## AI 辅助开发说明
 
-这个项目在开发、重构、测试与文档整理过程中使用了 AI 编程助手。
+这个项目在开发、重构、测试与文档整理过程中使用了 deepseek。
 
 ### AI 参与的范围
 
