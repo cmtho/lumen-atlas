@@ -157,7 +157,7 @@ npm start
 
 个人使用的原生安装包已经构建：
 
-- **原生 Android UI**：[LUMEN-ATLAS-Native-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261018.apk)
+- **原生 Android UI**：[LUMEN-ATLAS-Native-20261018-v2.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261018-v2.apk)
 - **轻量 TWA 版**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
 - **Windows 便携版**：[LUMEN-ATLAS-Windows-20261018.zip](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Windows-20261018.zip)
 - **校验和**：[SHA256SUMS-APPS-20261018.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261018.txt)
