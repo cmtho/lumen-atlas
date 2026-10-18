@@ -30,5 +30,13 @@
     "playwright": "^1.64.1",
     "vite": "^7.0.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zqy20081015/lumen-atlas.git"
+  },
+  "homepage": "https://lumen.chemcraze.asia",
+  "bugs": {
+    "url": "https://github.com/zqy20081015/lumen-atlas/issues"
+  }
 }

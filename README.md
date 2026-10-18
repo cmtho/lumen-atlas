@@ -3,6 +3,7 @@
 一个可自托管的私人旅行影像星图：把照片按 **地点（国家 / 省 / 市 / 区县）** 与 **人物** 归档，在 3D 地球上重新看见自己的旅程。
 
 - 当前示例部署：<https://lumen.chemcraze.asia>
+- 源码仓库：<https://github.com/zqy20081015/lumen-atlas>
 - 技术栈：React 19 + Vite 7 + MapLibre GL JS 5 + 高德 JS API 2.0 + Express 4 + Sharp
 - 多用户：账号登录、邀请码注册、主人 / 管理员 / 成员三级权限
 - 初次部署：访问 `/setup` 完成站点与主人账号初始化
@@ -525,6 +526,8 @@ AI 生成的代码和文档仍可能包含错误。开源发布或生产使用�
 仓库的 `releases/` 会提供两种发布包：
 
 ### 无数据源码包
+
+GitHub 仓库：<https://github.com/zqy20081015/lumen-atlas>
 
 ```text
 lumen-atlas-source-clean-YYYYMMDD.tar.gz
