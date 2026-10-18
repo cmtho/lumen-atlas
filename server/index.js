@@ -1009,7 +1009,14 @@ app.get('/media/:kind/:name', requireAuth, async (req, res) => {
 /* ---------- static SPA ---------- */
 app.use(express.static(DIST, {
   maxAge: '1y', immutable: true,
-  setHeaders(res, filePath) { if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache'); },
+  setHeaders(res, filePath) {
+    const base = path.basename(filePath);
+    if (base === 'index.html' || base === 'sw.js' || base === 'manifest.webmanifest') {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+    if (base === 'sw.js') res.setHeader('Service-Worker-Allowed', '/');
+    if (base === 'manifest.webmanifest') res.setHeader('Content-Type', 'application/manifest+json');
+  },
 }));
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/') || req.path.startsWith('/media/')) return res.status(404).json({ error: '资源不存在' });

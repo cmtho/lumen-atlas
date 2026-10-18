@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Aperture, Camera, Copy, Database, Download, Globe2, HardDrive, KeyRound, Link2, LogOut, MapPin, Moon, Pencil, RotateCcw, ShieldCheck, Sparkles, Sun, Ticket, Trash2 } from 'lucide-react';
 import { formatDateDots, initials, regionKey } from '../lib/utils.js';
 
-export default function ProfileView({ profile, photos, places, people, theme, onToggleTheme, onEditProfile, onClearDemo, onRestoreDemo, demoCount, onNotice, account, invites = [], enableDemo, onGenerateInvite, onRevokeInvite, onLogout, onChangePassword, onOpenAdmin, isStaff, onAvatarUpload, onAvatarRemove }) {
+export default function ProfileView({ profile, photos, places, people, theme, onToggleTheme, onEditProfile, onClearDemo, onRestoreDemo, demoCount, onNotice, account, invites = [], enableDemo, onGenerateInvite, onRevokeInvite, onLogout, onChangePassword, onOpenAdmin, isStaff, onAvatarUpload, onAvatarRemove, install }) {
   const avatarInputRef = useRef(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const uploadAvatar = async (e) => {
@@ -125,6 +125,21 @@ export default function ProfileView({ profile, photos, places, people, theme, on
                 <button className={theme === 'dark' ? 'active' : ''} onClick={() => theme !== 'dark' && onToggleTheme()} aria-label="深色模式"><Moon size={14} /> 深色</button>
                 <button className={theme === 'light' ? 'active' : ''} onClick={() => theme !== 'light' && onToggleTheme()} aria-label="浅色模式"><Sun size={14} /> 浅色</button>
               </div>
+            </div>
+            <div className="setting-row">
+              <div><strong>安装应用</strong><small>Android 和 Windows 可安装为独立窗口，使用同一账号，自动跟随网站更新</small></div>
+              {install?.installed ? (
+                <span className="status-chip"><Download size={12} /> 已安装</span>
+              ) : (
+                <button className="ghost-btn" onClick={async () => {
+                  if (install?.available) {
+                    const ok = await install.promptInstall();
+                    if (!ok) onNotice?.('已取消安装');
+                  } else {
+                    onNotice?.('请打开浏览器菜单，选择“安装应用 / 添加到主屏幕”');
+                  }
+                }}><Download size={14} /> 安装</button>
+              )}
             </div>
             <div className="setting-row">
               <div><strong>数据备份</strong><small>导出全部影像元数据为 JSON，原图可在服务器 data 目录取回</small></div>
