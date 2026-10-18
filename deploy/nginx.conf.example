@@ -1,0 +1,57 @@
+# LUMEN ATLAS — Nginx reverse proxy example
+# 1. Replace example.com with your domain.
+# 2. Run: sudo certbot --nginx -d example.com --redirect
+# 3. Keep the app on 127.0.0.1:8099 and only expose 80/443.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name example.com;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+        allow all;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:LUMEN_SSL:2m;
+    ssl_session_timeout 1h;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    access_log /var/log/nginx/lumen-atlas.access.log;
+    error_log  /var/log/nginx/lumen-atlas.error.log;
+
+    client_max_body_size 60m;
+    proxy_request_buffering off;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+        allow all;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8099;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_redirect off;
+    }
+}

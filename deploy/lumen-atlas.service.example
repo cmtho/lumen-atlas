@@ -1,0 +1,19 @@
+[Unit]
+Description=Lumen Atlas — personal travel photo atlas
+After=network.target
+
+[Service]
+Type=simple
+User=lumen
+Group=lumen
+WorkingDirectory=/opt/lumen-atlas
+EnvironmentFile=/opt/lumen-atlas/.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

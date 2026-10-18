@@ -1,0 +1,21 @@
+data/
+preview/
+node_modules/
+dist/
+shots/
+data/uploads/
+data/thumbs/
+data/originals/
+data/db.json
+data/*.backup-*.json
+data/geocode-cache.json
+.cache-regions/
+.env
+.env.*
+!.env.example
+data/avatars/
+data/owner-login.txt
+data/*.pre-multiuser-*.json
+
+# local release archives
+releases/
