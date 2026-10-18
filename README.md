@@ -4,6 +4,7 @@
 
 - 当前示例部署：<https://lumen.chemcraze.asia>
 - 源码仓库：<https://github.com/zqy20081015/lumen-atlas>
+- 开发记录：<https://cmtho.chemcraze.asia/posts/lumen-atlas-build-log>
 - 技术栈：React 19 + Vite 7 + MapLibre GL JS 5 + 高德 JS API 2.0 + Express 4 + Sharp
 - 多用户：账号登录、邀请码注册、主人 / 管理员 / 成员三级权限
 - 初次部署：访问 `/setup` 完成站点与主人账号初始化
