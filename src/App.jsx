@@ -12,7 +12,6 @@ import { PersonModal, ProfileModal, PasswordModal } from './components/PeopleMod
 import Toast from './components/Toast.jsx';
 import LoginScreen from './components/LoginScreen.jsx';
 import AdminView from './components/AdminView.jsx';
-import { useInstallPrompt } from './lib/useInstallPrompt.js';
 import { api } from './lib/api.js';
 import { buildPlaces, regionKey } from './lib/utils.js';
 
@@ -65,7 +64,6 @@ export default function App() {
   const [personModal, setPersonModal] = useState({ open: false, person: null });
   const [profileModal, setProfileModal] = useState(false);
   const [passwordModal, setPasswordModal] = useState(false);
-  const install = useInstallPrompt();
 
   const notice = useCallback((message, type = 'success') => {
     setToast({ id: Date.now() + Math.random(), message, type });
@@ -428,7 +426,7 @@ export default function App() {
             enableDemo={data.meta?.demoEnabled} onGenerateInvite={handleGenerateInvite}
             onRevokeInvite={handleRevokeInvite} onLogout={logout}
             onChangePassword={() => setPasswordModal(true)} onOpenAdmin={() => setView('admin')}
-            isStaff={isStaff} onAvatarUpload={handleAvatarUpload} onAvatarRemove={handleAvatarRemove} install={install}
+            isStaff={isStaff} onAvatarUpload={handleAvatarUpload} onAvatarRemove={handleAvatarRemove}
           />
         )}
       </main>
