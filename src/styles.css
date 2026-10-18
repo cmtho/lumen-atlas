@@ -1740,3 +1740,17 @@ html[data-theme='dark'] .amap-host.amap-dom-render .amap-layer-tile { filter: in
 .invite-intro .primary-btn { margin-top: 10px; }
 .invite-intro > small { margin-top: 8px; }
 @media (max-width: 860px) { .invite-config { max-width: none; } }
+
+/* map-only embed used by the native Android shell */
+html.embed-map, html.embed-map body { background: #02060e; overflow: hidden; }
+html.embed-map .atlas-rail,
+html.embed-map .mobile-sheet,
+html.embed-map .place-inspector,
+html.embed-map .map-hud,
+html.embed-map .map-provider,
+html.embed-map .map-status,
+html.embed-map .map-controls,
+html.embed-map .map-scale,
+html.embed-map .map-admin-level { display: none !important; }
+html.embed-map .app-main { height: 100dvh; }
+html.embed-map .atlas-view { position: fixed; inset: 0; }

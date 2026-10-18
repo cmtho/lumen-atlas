@@ -32,3 +32,7 @@ android/*.apk
 android/*.aab
 android/app-release*
 android/app/*.apk
+android-native/.gradle/
+android-native/build/
+android-native/app/build/
+android-native/local.properties

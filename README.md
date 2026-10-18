@@ -157,17 +157,22 @@ npm start
 
 个人使用的原生安装包已经构建：
 
-- **Android APK**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
+- **原生 Android UI**：[LUMEN-ATLAS-Native-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261018.apk)
+- **轻量 TWA 版**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
 - **Windows 便携版**：[LUMEN-ATLAS-Windows-20261018.zip](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Windows-20261018.zip)
 - **校验和**：[SHA256SUMS-APPS-20261018.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261018.txt)
 
-### Android
+### Android 原生 UI 版
 
-- Android 7.0+，需要系统 Chrome / WebView
+- Android 7.0+
+- Compose 原生登录、档案、上传、个人页
+- 球体地图由 WebView 承载，完整保留 LUMEN 的 globe 和中国行政区细节
+- 数据通过 LUMEN API + Cookie 会话读写
+- 包名：`asia.chemcraze.lumen.nativeapp`
+- 不依赖 Chrome，使用系统 WebView
 - 下载 APK 后允许“安装未知来源应用”
-- 使用 Trusted Web Activity，打开后是全屏独立应用
-- 包名：`asia.chemcraze.lumen`
-- 使用同一账号与线上数据
+
+轻量 TWA 版保留在 `LUMEN-ATLAS-Android-20261018.apk`，适合已经有 Chrome、只想快速打开网页的用户。
 
 ### Windows
 
@@ -177,7 +182,7 @@ npm start
 - 首次运行可能被 SmartScreen 拦截，选择“更多信息 → 仍要运行”
 - 使用同一账号与线上数据
 
-原生壳源码分别在 `android/` 和 `desktop/`，APK 使用本地 keystore 签名，Windows 版为 Electron 便携包。
+原生壳源码分别在 `android-native/`（Compose）和 `android/`（TWA）、`desktop/`（Electron），APK 使用本地 keystore 签名，Windows 版为 Electron 便携包。
 
 ## 首次部署配置页
 

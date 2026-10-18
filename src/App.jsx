@@ -15,6 +15,7 @@ import AdminView from './components/AdminView.jsx';
 import { api } from './lib/api.js';
 import { buildPlaces, regionKey } from './lib/utils.js';
 
+const EMBED_MAP = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === 'map';
 const EMPTY_FILTER = { q: '', personId: '', year: '', province: '', placeKey: '' };
 
 function LoadingScreen() {
@@ -47,7 +48,7 @@ export default function App() {
   const [loadError, setLoadError] = useState('');
   const [authRequired, setAuthRequired] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'dark');
-  const [mapProvider, setMapProvider] = useState(() => localStorage.getItem('lumen-map-provider') || 'libre');
+  const [mapProvider, setMapProvider] = useState(() => EMBED_MAP ? 'libre' : (localStorage.getItem('lumen-map-provider') || 'libre'));
   const [view, setView] = useState('atlas');
   const [toast, setToast] = useState(null);
   const [personFilter, setPersonFilter] = useState(null);
@@ -90,6 +91,11 @@ export default function App() {
   useEffect(() => {
     document.title = data?.site?.siteName ? `${data.site.siteName} · 私人旅行影像星图` : 'Lumen Atlas · 流光坐标';
   }, [data?.site?.siteName]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('embed-map', EMBED_MAP);
+    return () => document.documentElement.classList.remove('embed-map');
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -377,12 +383,12 @@ export default function App() {
     <div className={`app-shell view-${view}`}>
       <div className="ambient-bg" aria-hidden="true"><span className="ambient-a" /><span className="ambient-b" /><span className="ambient-c" /></div>
       <div className="grain" aria-hidden="true" />
-      <Header
+      {!EMBED_MAP && <Header
         view={view} setView={setView} theme={theme}
         onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
         onUpload={() => openUpload()} profile={data.profile}
         onSearch={() => setSearchOpen(true)} isStaff={isStaff} site={data.site}
-      />
+      />}
 
       <main className="app-main">
         <AtlasView
@@ -431,7 +437,7 @@ export default function App() {
         )}
       </main>
 
-      <MobileNav view={view} setView={setView} onUpload={() => openUpload()} />
+      {!EMBED_MAP && <MobileNav view={view} setView={setView} onUpload={() => openUpload()} />}
 
       <SearchPalette
         open={searchOpen} onClose={() => setSearchOpen(false)}
