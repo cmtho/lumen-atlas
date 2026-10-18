@@ -56,6 +56,8 @@ import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -375,7 +377,7 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
         ) { inner ->
             Box(Modifier.fillMaxSize().padding(inner)) {
                 when (tab) {
-                    0 -> GlobeScreen(data)
+                    0 -> GlobeScreen(data, onPhoto = { selectedPhoto = it })
                     1 -> ArchiveScreen(data, onPhoto = { selectedPhoto = it }, onRefresh = { refresh() })
                     2 -> UploadScreen(
                         onUploaded = { count ->
@@ -403,19 +405,21 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun GlobeScreen(data: Bootstrap) {
+private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit) {
     val context = LocalContext.current
+    val loading = remember { mutableStateOf(true) }
+    var provider by rememberSaveable { mutableStateOf("libre") }
     val webView = remember {
         WebView(context).apply {
             setBackgroundColor(0xFF02060E.toInt())
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.databaseEnabled = true
             settings.loadsImagesAutomatically = true
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.mediaPlaybackRequiresUserGesture = false
             settings.setSupportZoom(false)
             webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) { loading.value = false }
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val url = request?.url ?: return false
                     if (url.host == "lumen.chemcraze.asia") return false
@@ -426,11 +430,11 @@ private fun GlobeScreen(data: Bootstrap) {
             webChromeClient = WebChromeClient()
         }
     }
-    var loading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(provider) {
+        loading.value = true
         Api.syncWebViewCookie()
-        webView.loadUrl("${Api.BASE}/?embed=map&v=native1")
+        webView.loadUrl("${Api.BASE}/?embed=map&provider=$provider&v=native2")
     }
 
     DisposableEffect(Unit) {
@@ -445,6 +449,14 @@ private fun GlobeScreen(data: Bootstrap) {
 
     Box(Modifier.fillMaxSize().background(Color(0xFF02060E))) {
         AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
+        Box(
+            Modifier.fillMaxWidth().height(300.dp).align(Alignment.TopCenter)
+                .background(Brush.verticalGradient(listOf(Color(0xE6030811), Color(0x99030811), Color.Transparent))),
+        )
+        Box(
+            Modifier.fillMaxWidth().height(190.dp).align(Alignment.BottomCenter)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC030811)))),
+        )
         Column(
             Modifier.statusBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -455,32 +467,77 @@ private fun GlobeScreen(data: Bootstrap) {
                     Spacer(Modifier.width(9.dp))
                     Column {
                         Text("LUMEN ATLAS", color = Ink, fontSize = 11.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
-                        Text("全球球体 / 原生客户端", color = Soft, fontSize = 9.sp)
+                        Text(if (provider == "libre") "全球球体 / 原生客户端" else "高德中国底图 / 原生客户端", color = Soft, fontSize = 9.sp)
                     }
                     Spacer(Modifier.weight(1f))
                     Text("${data.photos.size} 帧", color = Cyan, fontSize = 10.sp)
                 }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                ProviderPill("LUMEN 球体", provider == "libre") { provider = "libre" }
+                ProviderPill("高德中国", provider == "amap") { provider = "amap" }
+            }
             Text("拖拽旋转 · 双指缩放", color = Soft.copy(alpha = .8f), fontSize = 9.sp, modifier = Modifier.padding(start = 4.dp))
         }
-        Text("© OpenStreetMap · OpenFreeMap · MapLibre", color = Color.White.copy(alpha = .55f), fontSize = 8.sp, modifier = Modifier.align(Alignment.BottomStart).padding(13.dp))
-        if (loading) {
-            CircularProgressIndicator(color = Cyan, strokeWidth = 2.dp, modifier = Modifier.align(Alignment.Center).size(25.dp))
-        }
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) { loading = false }
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val url = request?.url ?: return false
-                if (url.host == "lumen.chemcraze.asia") return false
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url)) }
-                return true
+
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()) {
+            Text(
+                if (provider == "libre") "© OpenStreetMap · OpenFreeMap · MapLibre" else "© 高德地图 · MapLibre / OSM contributors",
+                color = Color.White.copy(alpha = .55f),
+                fontSize = 8.sp,
+                modifier = Modifier.padding(horizontal = 13.dp, vertical = 5.dp),
+            )
+            if (data.photos.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().background(Color(0xCC06111D)),
+                ) {
+                    items(data.photos.take(12), key = { it.id }) { photo ->
+                        Box(
+                            Modifier.size(68.dp).clip(RoundedCornerShape(10.dp))
+                                .border(1.dp, Color.White.copy(alpha = .16f), RoundedCornerShape(10.dp))
+                                .clickable { onPhoto(photo) },
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context).data(photo.thumb).crossfade(true).build(),
+                                contentDescription = photo.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                }
             }
+        }
+
+        if (loading.value) {
+            CircularProgressIndicator(color = Cyan, strokeWidth = 2.dp, modifier = Modifier.align(Alignment.Center).size(25.dp))
         }
     }
 }
 
 @Composable
+private fun ProviderPill(label: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(50)).background(if (active) Color(0xE60A1725) else Color(0xB306111D))
+            .border(1.dp, if (active) Cyan.copy(alpha = .45f) else Color.White.copy(alpha = .12f), RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 8.dp),
+    ) {
+        Text(label, color = if (active) Cyan else Soft, fontSize = 10.sp)
+    }
+}
+
+@Composable
 private fun ArchiveScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onRefresh: () -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val filtered = remember(query, data.photos) {
+        val term = query.trim().lowercase()
+        if (term.isBlank()) data.photos else data.photos.filter {
+            listOf(it.title, it.place, it.tags.joinToString(" ")).joinToString(" ").lowercase().contains(term)
+        }
+    }
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 28.dp),
@@ -489,28 +546,47 @@ private fun ArchiveScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onRefresh: 
         modifier = Modifier.fillMaxSize(),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text("影像档案", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp)
-                    Text("${data.photos.size} 个坐标 · ${data.people.size} 位旅人", color = Soft, fontSize = 11.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text("影像档案", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp)
+                        Text("${filtered.size} 个坐标 · ${data.people.size} 位旅人", color = Soft, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = onRefresh) { Icon(Icons.Outlined.Refresh, "刷新", tint = Soft) }
                 }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onRefresh) { Icon(Icons.Outlined.Refresh, "刷新", tint = Soft) }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("搜索标题、地点、标签", fontSize = 12.sp, color = Soft) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Soft) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cyan,
+                        unfocusedBorderColor = Color.White.copy(alpha = .14f),
+                        focusedTextColor = Ink,
+                        unfocusedTextColor = Ink,
+                        focusedContainerColor = Color(0xFF06111D),
+                        unfocusedContainerColor = Color(0xFF06111D),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
-        if (data.photos.isEmpty()) {
+        if (filtered.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 GlassCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.PhotoLibrary, null, tint = Cyan, modifier = Modifier.size(38.dp))
                         Spacer(Modifier.height(12.dp))
-                        Text("这里还没有影像", color = Ink, fontSize = 16.sp)
-                        Text("从下方“上传”写入第一张照片", color = Soft, fontSize = 11.sp)
+                        Text(if (data.photos.isEmpty()) "这里还没有影像" else "没有匹配的影像", color = Ink, fontSize = 16.sp)
+                        Text(if (data.photos.isEmpty()) "从下方“上传”写入第一张照片" else "换一个关键词试试", color = Soft, fontSize = 11.sp)
                     }
                 }
             }
         }
-        items(data.photos, key = { it.id }) { photo ->
+        items(filtered, key = { it.id }) { photo ->
             PhotoCard(photo, onClick = { onPhoto(photo) })
         }
     }
@@ -545,10 +621,26 @@ private fun UploadScreen(onUploaded: (Int) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showPlaceSearch by remember { mutableStateOf(false) }
+    var placeQuery by remember { mutableStateOf("") }
+    var placeResults by remember { mutableStateOf<List<PlaceResult>>(emptyList()) }
+    var placeSearching by remember { mutableStateOf(false) }
+    var selectedPlace by remember { mutableStateOf<PlaceResult?>(null) }
     val scope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(10),
     ) { uris -> selected = uris; error = null; message = null }
+
+    fun searchPlace() {
+        if (placeQuery.trim().length < 2 || placeSearching) return
+        placeSearching = true
+        error = null
+        scope.launch {
+            try { placeResults = Api.searchPlaces(placeQuery) }
+            catch (e: Exception) { error = e.message ?: "搜索失败" }
+            finally { placeSearching = false }
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp, 16.dp, 16.dp, 28.dp),
@@ -593,14 +685,88 @@ private fun UploadScreen(onUploaded: (Int) -> Unit) {
                         ),
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text("没有 GPS 的照片不会自动定位，可以稍后在网页里补充地点。", color = Soft, fontSize = 9.sp)
+
+                    if (selectedPlace != null) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+                                .background(Cyan.copy(alpha = .08f))
+                                .border(1.dp, Cyan.copy(alpha = .25f), RoundedCornerShape(11.dp))
+                                .padding(11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.LocationOn, null, tint = Cyan, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(selectedPlace!!.label, color = Ink, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(selectedPlace!!.detail, color = Soft, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            IconButton(onClick = { selectedPlace = null }, modifier = Modifier.size(26.dp)) {
+                                Icon(Icons.Outlined.Close, "清除地点", tint = Soft, modifier = Modifier.size(15.dp))
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = { showPlaceSearch = !showPlaceSearch },
+                        shape = RoundedCornerShape(11.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Outlined.LocationOn, null, tint = Cyan, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text(if (selectedPlace == null) "搜索地点（可选）" else "更换地点", color = Ink, fontSize = 11.sp)
+                    }
+
+                    if (showPlaceSearch) {
+                        OutlinedTextField(
+                            value = placeQuery,
+                            onValueChange = { placeQuery = it },
+                            singleLine = true,
+                            placeholder = { Text("城市、地标或地址", fontSize = 11.sp, color = Soft) },
+                            leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Soft) },
+                            trailingIcon = {
+                                TextButton(onClick = { searchPlace() }) {
+                                    if (placeSearching) CircularProgressIndicator(Modifier.size(15.dp), color = Cyan, strokeWidth = 2.dp)
+                                    else Text("搜索", color = Cyan, fontSize = 10.sp)
+                                }
+                            },
+                            shape = RoundedCornerShape(13.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Cyan,
+                                unfocusedBorderColor = Color.White.copy(alpha = .14f),
+                                focusedTextColor = Ink,
+                                unfocusedTextColor = Ink,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        placeResults.take(5).forEach { place ->
+                            Column(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        selectedPlace = place
+                                        showPlaceSearch = false
+                                        placeResults = emptyList()
+                                    }
+                                    .background(Color.White.copy(alpha = .045f))
+                                    .padding(10.dp),
+                            ) {
+                                Text(place.label, color = Ink, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                Text(place.detail, color = Soft, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+
+                    Text(
+                        if (selectedPlace == null) "没有 GPS 的照片不会自动定位，可搜索地点后统一写入。" else "这组照片将写入所选地点；单张 EXIF GPS 会被覆盖。",
+                        color = Soft,
+                        fontSize = 9.sp,
+                    )
                     Button(
                         onClick = {
                             busy = true; error = null; message = null
                             scope.launch {
                                 try {
-                                    val count = Api.upload(context, selected, title)
-                                    selected = emptyList(); title = ""
+                                    val count = Api.upload(context, selected, title, selectedPlace)
+                                    selected = emptyList(); title = ""; selectedPlace = null
                                     message = "已写入 $count 张影像"
                                     onUploaded(count)
                                 } catch (e: Exception) {

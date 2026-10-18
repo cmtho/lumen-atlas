@@ -167,6 +167,10 @@ npm start
 - Android 7.0+
 - Compose 原生登录、档案、上传、个人页
 - 球体地图由 WebView 承载，完整保留 LUMEN 的 globe 和中国行政区细节
+- 地图内可切换 **LUMEN 球体 / 高德中国底图**
+- 地图底部有最近影像轮播，点击打开原生大图
+- 档案页支持标题 / 地点 / 标签搜索
+- 上传时可搜索高德地点，把整组照片写入同一个坐标
 - 数据通过 LUMEN API + Cookie 会话读写
 - 包名：`asia.chemcraze.lumen.nativeapp`
 - 不依赖 Chrome，使用系统 WebView

@@ -16,6 +16,7 @@ import { api } from './lib/api.js';
 import { buildPlaces, regionKey } from './lib/utils.js';
 
 const EMBED_MAP = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === 'map';
+const EMBED_PROVIDER = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('provider') === 'amap' ? 'amap' : 'libre';
 const EMPTY_FILTER = { q: '', personId: '', year: '', province: '', placeKey: '' };
 
 function LoadingScreen() {
@@ -48,7 +49,7 @@ export default function App() {
   const [loadError, setLoadError] = useState('');
   const [authRequired, setAuthRequired] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'dark');
-  const [mapProvider, setMapProvider] = useState(() => EMBED_MAP ? 'libre' : (localStorage.getItem('lumen-map-provider') || 'libre'));
+  const [mapProvider, setMapProvider] = useState(() => EMBED_MAP ? EMBED_PROVIDER : (localStorage.getItem('lumen-map-provider') || 'libre'));
   const [view, setView] = useState('atlas');
   const [toast, setToast] = useState(null);
   const [personFilter, setPersonFilter] = useState(null);

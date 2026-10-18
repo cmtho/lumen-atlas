@@ -57,6 +57,19 @@ data class Photo(
 
 data class Person(val id: String, val name: String, val color: String)
 
+data class PlaceResult(
+    val label: String,
+    val detail: String,
+    val country: String,
+    val countryCode: String,
+    val province: String,
+    val city: String,
+    val district: String,
+    val lat: Double,
+    val lng: Double,
+    val source: String,
+)
+
 data class Bootstrap(
     val profile: Profile,
     val account: Account,
@@ -177,7 +190,34 @@ object Api {
         else -> "$BASE/$this"
     }
 
-    suspend fun upload(context: Context, uris: List<Uri>, titlePrefix: String): Int {
+    suspend fun searchPlaces(query: String): List<PlaceResult> {
+        if (query.isBlank()) return emptyList()
+        val url = "$BASE/api/geocode/search".toHttpUrl().newBuilder()
+            .addQueryParameter("q", query.trim())
+            .build()
+        val text = execute(Request.Builder().url(url).get().build())
+        val arr = JSONObject(text).optJSONArray("results") ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val r = arr.optJSONObject(i) ?: return@mapNotNull null
+            val lat = r.optDouble("lat", Double.NaN)
+            val lng = r.optDouble("lng", Double.NaN)
+            if (lat.isNaN() || lng.isNaN()) return@mapNotNull null
+            PlaceResult(
+                label = r.optString("label", "地点"),
+                detail = r.optString("detail", ""),
+                country = r.optString("country", ""),
+                countryCode = r.optString("countryCode", ""),
+                province = r.optString("province", ""),
+                city = r.optString("city", ""),
+                district = r.optString("district", ""),
+                lat = lat,
+                lng = lng,
+                source = r.optString("source", ""),
+            )
+        }
+    }
+
+    suspend fun upload(context: Context, uris: List<Uri>, titlePrefix: String, place: PlaceResult? = null): Int {
         if (uris.isEmpty()) return 0
         val metadata = JSONArray()
         val parts = mutableListOf<Pair<String, ByteArray>>()
@@ -226,6 +266,16 @@ object Api {
                 put("dateSource", if (date != null) "exif" else "file")
                 if (date != null) put("date", date)
                 if (lat != null && lng != null) { put("lat", lat); put("lng", lng) }
+                if (place != null) {
+                    put("lat", place.lat)
+                    put("lng", place.lng)
+                    put("country", place.country)
+                    put("countryCode", place.countryCode)
+                    put("province", place.province)
+                    put("city", place.city)
+                    put("district", place.district)
+                    put("locationName", place.label)
+                }
             })
             parts += name to bytes
         }
