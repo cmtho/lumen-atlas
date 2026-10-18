@@ -295,8 +295,8 @@ export default function App() {
     notice('个人档案已更新');
   };
 
-  const handleGenerateInvite = async () => {
-    const res = await api.createInvite();
+  const handleGenerateInvite = async (options = {}) => {
+    const res = await api.createInvite(options);
     setData(prev => ({ ...prev, invites: [res.invite, ...(prev.invites || [])] }));
     notice(`邀请码已生成：${res.invite.code}`);
     return res.invite;

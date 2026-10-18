@@ -27,7 +27,7 @@ export const api = {
   register: (payload) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   changePassword: (currentPassword, newPassword) => request('/api/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
-  createInvite: () => request('/api/invites', { method: 'POST', body: JSON.stringify({}) }),
+  createInvite: (options = {}) => request('/api/invites', { method: 'POST', body: JSON.stringify(options) }),
   deleteInvite: (id) => request(`/api/invites/${id}`, { method: 'DELETE' }),
   updateProfile: (patch) => request('/api/profile', { method: 'PATCH', body: JSON.stringify(patch) }),
   uploadAvatar: (file) => { const form = new FormData(); form.append('avatar', file); return request('/api/profile/avatar', { method: 'POST', body: form }); },

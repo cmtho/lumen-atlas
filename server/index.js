@@ -505,6 +505,10 @@ app.get('/api/invites', async (req, res) => {
 });
 
 app.post('/api/invites', async (req, res) => {
+  const requestedDays = Number(req.body?.expiresDays);
+  const requestedUses = Number(req.body?.maxUses);
+  const expiresDays = Math.min(365, Math.max(1, Math.round(Number.isFinite(requestedDays) ? requestedDays : 14)));
+  const maxUses = Math.min(100, Math.max(1, Math.round(Number.isFinite(requestedUses) ? requestedUses : 1)));
   const invite = await mutate(db => {
     let code = generateInviteCode();
     while (db.invites.some(i => i.code === code)) code = generateInviteCode();
@@ -513,8 +517,8 @@ app.post('/api/invites', async (req, res) => {
       code,
       createdBy: req.user.id,
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
-      maxUses: 1,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * expiresDays).toISOString(),
+      maxUses,
       uses: 0,
       usedBy: [],
       revokedAt: null,

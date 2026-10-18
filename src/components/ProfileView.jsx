@@ -5,6 +5,9 @@ import { formatDateDots, initials, regionKey } from '../lib/utils.js';
 export default function ProfileView({ profile, photos, places, people, theme, onToggleTheme, onEditProfile, onClearDemo, onRestoreDemo, demoCount, onNotice, account, invites = [], enableDemo, onGenerateInvite, onRevokeInvite, onLogout, onChangePassword, onOpenAdmin, isStaff, onAvatarUpload, onAvatarRemove }) {
   const avatarInputRef = useRef(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [inviteDays, setInviteDays] = useState(14);
+  const [inviteUses, setInviteUses] = useState(1);
+  const [inviteBusy, setInviteBusy] = useState(false);
   const uploadAvatar = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -175,17 +178,25 @@ export default function ProfileView({ profile, photos, places, people, theme, on
           <div className="invite-intro">
             <span className="eyebrow">GROW THE CONSTELLATION</span>
             <h3>邀请新的旅人<span className="accent-dot">.</span></h3>
-            <p>每位已注册用户都可以生成一次性邀请码。被邀请人打开链接后即可创建自己的账号，照片、人物和地点彼此隔离。</p>
-            <button className="primary-btn" onClick={async () => {
-              const inv = await onGenerateInvite?.();
-              if (inv) {
-                try {
-                  await navigator.clipboard.writeText(`${window.location.origin}/?invite=${inv.code}`);
-                  onNotice?.('邀请链接已复制');
-                } catch { onNotice?.(`邀请码：${inv.code}`); }
-              }
-            }}><Ticket size={15} /> 生成邀请码</button>
-            <small>单次使用 · 14 天有效 · 已登录用户均可生成</small>
+            <p>每位已注册用户都可以生成邀请码。被邀请人打开链接后即可创建自己的账号，照片、人物和地点彼此隔离。</p>
+            <div className="invite-config">
+              <label><span>有效期</span><input type="number" min="1" max="365" value={inviteDays} onChange={e => setInviteDays(e.target.value)} /><em>天</em></label>
+              <label><span>可用次数</span><input type="number" min="1" max="100" value={inviteUses} onChange={e => setInviteUses(e.target.value)} /><em>次</em></label>
+            </div>
+            <button className="primary-btn" disabled={inviteBusy} onClick={async () => {
+              setInviteBusy(true);
+              try {
+                const inv = await onGenerateInvite?.({ expiresDays: Number(inviteDays), maxUses: Number(inviteUses) });
+                if (inv) {
+                  try {
+                    await navigator.clipboard.writeText(`${window.location.origin}/?invite=${inv.code}`);
+                    onNotice?.('邀请链接已复制');
+                  } catch { onNotice?.(`邀请码：${inv.code}`); }
+                }
+              } catch (err) { onNotice?.(err.message); }
+              finally { setInviteBusy(false); }
+            }}><Ticket size={15} /> {inviteBusy ? '生成中…' : '生成邀请码'}</button>
+            <small>1–365 天 · 1–100 次 · 已登录用户均可生成</small>
           </div>
           <div className="invite-list">
             <div className="invite-list-head"><span>我的邀请码</span><em>{invites.length} TOTAL</em></div>
@@ -198,11 +209,12 @@ export default function ProfileView({ profile, photos, places, people, theme, on
                 <div className={`invite-item ${active ? 'active' : ''}`} key={inv.id}>
                   <div className="invite-code-row">
                     <strong>{inv.code}</strong>
-                    <span className={active ? 'active' : 'spent'}>{active ? '可用' : used ? '已使用' : expired ? '已过期' : '已撤销'}</span>
+                    <span className={active ? 'active' : 'spent'}>{active ? `可用 ${Math.max(0, (inv.maxUses || 1) - (inv.uses || 0))}/${inv.maxUses || 1}` : used ? '已用完' : expired ? '已过期' : '已撤销'}</span>
                   </div>
                   <div className="invite-meta">
                     <span><Link2 size={11} /> {new Date(inv.expiresAt).toLocaleDateString('zh-CN')} 到期</span>
-                    {inv.usedBy?.length > 0 && <span>由 @{inv.usedBy.join(', @')} 使用</span>}
+                    <span>已用 {inv.uses || 0} / {inv.maxUses || 1} 次</span>
+                    {inv.usedBy?.length > 0 && <span>@{inv.usedBy.join(', @')}</span>}
                   </div>
                   <div className="invite-actions">
                     {active && <button className="text-btn" onClick={async () => {

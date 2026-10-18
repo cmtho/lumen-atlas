@@ -1729,3 +1729,14 @@ html[data-theme='dark'] .amap-host.amap-dom-render .amap-layer-tile { filter: in
   .admin-site-foot { align-items: flex-start; flex-direction: column; }
   .admin-site-foot .primary-btn { width: 100%; }
 }
+
+/* ---------- configurable invites ---------- */
+.invite-config { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; max-width: 310px; }
+.invite-config label { display: flex; align-items: center; gap: 5px; padding: 0 9px; height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--input); }
+.invite-config label > span { font-size: 8px; color: var(--muted); white-space: nowrap; }
+.invite-config input { width: 100%; min-width: 0; border: 0; outline: none; background: none; color: var(--text); font-family: var(--font-mono); font-size: 10px; text-align: center; }
+.invite-config input::-webkit-outer-spin-button, .invite-config input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.invite-config em { font-style: normal; font-size: 7px; color: var(--muted-2); }
+.invite-intro .primary-btn { margin-top: 10px; }
+.invite-intro > small { margin-top: 8px; }
+@media (max-width: 860px) { .invite-config { max-width: none; } }
