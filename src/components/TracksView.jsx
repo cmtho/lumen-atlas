@@ -105,7 +105,7 @@ export default function TracksView({ tracks = [], regions, onTracksChange, onNot
 
   const beginNew = () => {
     setEditing('new');
-    setDraft({ id: null, title: '', stops: [], color: COLORS[tracks.length % COLORS.length], notes: '' });
+    setDraft({ id: null, title: '', stops: [], color: COLORS[tracks.length % COLORS.length], notes: '', excludedPhotoIds: [] });
     setManualOrder(false);
     setDirty(false);
     setSearchOpen(false);
@@ -115,7 +115,7 @@ export default function TracksView({ tracks = [], regions, onTracksChange, onNot
 
   const beginEdit = (track) => {
     setEditing(track.id);
-    setDraft({ ...track, stops: sortedStops(track.stops), color: track.color || COLORS[0], notes: track.notes || '' });
+    setDraft({ ...track, stops: sortedStops(track.stops), color: track.color || COLORS[0], notes: track.notes || '', excludedPhotoIds: Array.isArray(track.excludedPhotoIds) ? [...track.excludedPhotoIds] : [] });
     setManualOrder(false);
     setDirty(false);
     setSearchOpen(false);
@@ -171,6 +171,17 @@ export default function TracksView({ tracks = [], regions, onTracksChange, onNot
     setDirty(true);
   };
 
+  const removeStop = (index) => {
+    setDraft(prev => {
+      const stop = prev.stops[index];
+      const excludedPhotoIds = stop?.photoId
+        ? [...new Set([...(prev.excludedPhotoIds || []), stop.photoId])]
+        : (prev.excludedPhotoIds || []);
+      return { ...prev, stops: prev.stops.filter((_, i) => i !== index), excludedPhotoIds };
+    });
+    setDirty(true);
+  };
+
   const addManual = () => {
     const lat = Number(manual.lat);
     const lng = Number(manual.lng);
@@ -193,6 +204,7 @@ export default function TracksView({ tracks = [], regions, onTracksChange, onNot
       stops: draft.stops,
       color: draft.color,
       notes: draft.notes || '',
+      excludedPhotoIds: draft.excludedPhotoIds || [],
     };
     try {
       const res = editing === 'new' ? await api.createTrack(payload) : await api.updateTrack(editing, payload);
@@ -287,7 +299,7 @@ export default function TracksView({ tracks = [], regions, onTracksChange, onNot
                         <Clock3 size={13} />
                         <input type="datetime-local" value={atInput(stop.at)} onChange={e => updateStop(index, { at: fromInput(e.target.value) })} />
                       </span>
-                      <button className="track-stop-delete" aria-label="删除地点" onClick={() => { setDraft(prev => ({ ...prev, stops: prev.stops.filter((_, i) => i !== index) })); setDirty(true); }}><X size={15} /></button>
+                      <button className="track-stop-delete" aria-label="删除地点" onClick={() => removeStop(index)}><X size={15} /></button>
                     </div>
                   ))}
                 </div>

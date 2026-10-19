@@ -343,7 +343,60 @@ function publicSite(db) {
 }
 
 const AUTO_TRACK_GAP_MS = 24 * 60 * 60 * 1000;
+const MAX_STOPS = 100;
 const AUTO_TRACK_COLORS = ['#65f4ff', '#ffbd73', '#b79cff', '#7df0a8', '#ff8ea8', '#9fc4ff'];
+
+function parseTrackTime(value) {
+  if (!value) return NaN;
+  const raw = String(value);
+  return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`);
+}
+
+function sampleEven(items, count) {
+  if (count <= 0 || !items.length) return [];
+  if (items.length <= count) return items;
+  if (count === 1) return [items[0]];
+  return Array.from({ length: count }, (_, i) => items[Math.round(i * (items.length - 1) / (count - 1))]);
+}
+
+function sampleStops(stops, max = MAX_STOPS) {
+  if (!Array.isArray(stops) || stops.length <= max) return stops;
+  const manual = stops.filter(stop => !stop.photoId);
+  const photos = stops.filter(stop => stop.photoId);
+  if (manual.length >= max) return sampleEven(manual, max);
+  return [...manual, ...sampleEven(photos, max - manual.length)]
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
+function trackInterval(track) {
+  const times = (Array.isArray(track?.stops) ? track.stops : [])
+    .map(stop => parseTrackTime(stop?.at))
+    .filter(Number.isFinite);
+  if (!times.length) return null;
+  return [Math.min(...times), Math.max(...times)];
+}
+
+function overlap(a1, a2, b1, b2) {
+  return a1 <= b2 && b1 <= a2;
+}
+
+function mergeStops(track, stops) {
+  if (!Array.isArray(track.stops)) track.stops = [];
+  const excluded = new Set(Array.isArray(track.excludedPhotoIds) ? track.excludedPhotoIds : []);
+  const have = new Set(track.stops.map(stop => stop.photoId).filter(Boolean));
+  let added = 0;
+  for (const stop of stops) {
+    if (!stop.photoId || have.has(stop.photoId) || excluded.has(stop.photoId)) continue;
+    track.stops.push(stop);
+    have.add(stop.photoId);
+    added++;
+  }
+  if (!added) return false;
+  track.stops.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  if (track.stops.length > MAX_STOPS) track.stops = sampleStops(track.stops, MAX_STOPS);
+  track.updatedAt = new Date().toISOString();
+  return true;
+}
 
 function autoTrackStops(photos) {
   const items = [];
@@ -353,7 +406,7 @@ function autoTrackStops(photos) {
     const lat = Number(photo.lat);
     if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
     const at = photo.capturedAt || photo.capturedLocal;
-    const time = at ? Date.parse(at) : NaN;
+    const time = at ? Date.parse(at.endsWith('Z') ? at : `${at}Z`) : NaN;
     if (!at || !Number.isFinite(time)) continue;
     items.push({
       time,
@@ -362,6 +415,7 @@ function autoTrackStops(photos) {
         lng,
         lat,
         at,
+        photoId: photo.id,
       },
     });
   }
@@ -378,11 +432,7 @@ function autoTrackStops(photos) {
   if (current.length) groups.push(current);
   return groups
     .filter(group => group.length >= 2)
-    .map(group => {
-      const stops = group.map(item => item.stop);
-      if (stops.length <= 50) return stops;
-      return Array.from({ length: 50 }, (_, i) => stops[Math.round(i * (stops.length - 1) / 49)]);
-    });
+    .map(group => sampleStops(group.map(item => item.stop), MAX_STOPS));
 }
 
 function autoTrackTitle(stops) {
@@ -393,10 +443,29 @@ function autoTrackTitle(stops) {
 
 function syncAutoTracks(db, userId) {
   if (!Array.isArray(db.tracks)) db.tracks = [];
-  db.tracks = db.tracks.filter(track => !(track.userId === userId && track.auto));
   const groups = autoTrackStops(db.photos.filter(photo => photo.userId === userId));
+  const manuals = db.tracks.filter(track => track.userId === userId && !track.auto);
+  db.tracks = db.tracks.filter(track => !(track.userId === userId && track.auto));
+  const claimed = new Set();
   const now = new Date().toISOString();
+
   groups.forEach((stops, index) => {
+    const groupTimes = stops.map(stop => parseTrackTime(stop.at)).filter(Number.isFinite);
+    if (!groupTimes.length) return;
+    const g1 = Math.min(...groupTimes);
+    const g2 = Math.max(...groupTimes);
+    const owner = manuals.find(track => {
+      const interval = trackInterval(track);
+      return interval && overlap(g1, g2, interval[0], interval[1]);
+    });
+    if (owner) {
+      claimed.add(index);
+      if (owner.syncPhotos !== false) mergeStops(owner, stops);
+    }
+  });
+
+  groups.forEach((stops, index) => {
+    if (claimed.has(index)) return;
     db.tracks.push({
       id: nextId('trk'),
       userId,
@@ -405,6 +474,8 @@ function syncAutoTracks(db, userId) {
       color: AUTO_TRACK_COLORS[index % AUTO_TRACK_COLORS.length],
       notes: `按相邻照片超过 24 小时自动分组，共 ${stops.length} 个地点`,
       auto: true,
+      syncPhotos: true,
+      excludedPhotoIds: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -413,7 +484,7 @@ function syncAutoTracks(db, userId) {
 
 function normalizeTrackStops(value) {
   if (!Array.isArray(value) || value.length < 2) return { error: '轨迹至少需要两个地点' };
-  if (value.length > 50) return { error: '轨迹最多支持 50 个地点' };
+  if (value.length > MAX_STOPS) return { error: '轨迹最多支持 100 个地点' };
   const stops = [];
   for (const item of value) {
     const name = safeText(item?.name, 80);
@@ -425,7 +496,8 @@ function normalizeTrackStops(value) {
     }
     const at = safeText(item?.at, 40);
     if (!at || Number.isNaN(Date.parse(at))) return { error: '地点时间不合法' };
-    stops.push({ name, lng, lat, at });
+    const photoId = safeText(item?.photoId, 120);
+    stops.push({ name, lng, lat, at, ...(photoId ? { photoId } : {}) });
   }
   return { stops };
 }
@@ -867,6 +939,8 @@ app.post('/api/tracks', async (req, res) => {
     stops: parsed.stops,
     color: /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#65f4ff',
     notes: safeText(b.notes, 2000),
+    syncPhotos: false,
+    excludedPhotoIds: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -889,6 +963,8 @@ app.patch('/api/tracks/:id', async (req, res) => {
     if (parsed) track.stops = parsed.stops;
     if ('color' in b) track.color = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#65f4ff';
     if ('notes' in b) track.notes = safeText(b.notes, 2000);
+    if (Array.isArray(b.excludedPhotoIds)) track.excludedPhotoIds = b.excludedPhotoIds.map(String).slice(0, 1000);
+    if (typeof b.syncPhotos === 'boolean') track.syncPhotos = b.syncPhotos;
     if (track.auto) track.auto = false;
     track.updatedAt = new Date().toISOString();
     return { track };
