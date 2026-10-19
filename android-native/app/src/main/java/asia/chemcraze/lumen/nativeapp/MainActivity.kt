@@ -1083,7 +1083,7 @@ private fun ProfileScreen(data: Bootstrap, isStaff: Boolean, onRefresh: () -> Un
                     )
                 } else {
                     Box(
-                        Modifier.size(84.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Cyan, Violet))),
+                        Modifier.size(84.dp).clip(CircleShape).background(Brush.linearGradient(listOf(parseHex(profile.avatarColor), Violet))),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(profile.name.take(1), color = Color(0xFF031018), fontSize = 30.sp, fontWeight = FontWeight.Bold)
@@ -1220,13 +1220,27 @@ private fun SearchDialog(data: Bootstrap, onPhoto: (Photo) -> Unit, onClose: () 
 
 @Composable
 private fun EditProfileDialog(profile: Profile, onSaved: (Profile) -> Unit, onClose: () -> Unit) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf(profile.name) }
     var handle by remember { mutableStateOf(profile.handle) }
     var bio by remember { mutableStateOf(profile.bio) }
     var home by remember { mutableStateOf(profile.home) }
+    var avatarUrl by remember { mutableStateOf(profile.avatarUrl) }
+    var avatarColor by remember { mutableStateOf(profile.avatarColor) }
+    var avatarBusy by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        avatarBusy = true; error = null
+        scope.launch {
+            try { avatarUrl = Api.uploadAvatar(context, uri) }
+            catch (e: Exception) { error = e.message ?: "头像上传失败" }
+            finally { avatarBusy = false }
+        }
+    }
+    val palette = listOf("#65f4ff", "#9c8cff", "#ffcf70", "#ff8ea8", "#7ef0b2", "#ffa86b")
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Bg)) {
@@ -1239,7 +1253,48 @@ private fun EditProfileDialog(profile: Profile, onSaved: (Profile) -> Unit, onCl
                     IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回", tint = Ink) }
                     Text("编辑资料", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Light)
                 }
-                Text("头像仍可在网页版个人页更换。", color = Soft, fontSize = 9.sp)
+                GlassCard(Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(70.dp).clip(CircleShape).background(
+                                Brush.linearGradient(listOf(parseHex(avatarColor), Violet)),
+                            ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (avatarUrl != null) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context).data(avatarUrl).crossfade(true).build(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                Text(name.take(1).ifBlank { "旅" }, color = Color(0xFF031018), fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                            }
+                            if (avatarBusy) CircularProgressIndicator(Modifier.size(22.dp), color = Cyan, strokeWidth = 2.dp)
+                        }
+                        Spacer(Modifier.width(13.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text("头像", color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TextButton(onClick = { avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, enabled = !avatarBusy) {
+                                    Text("更换", color = Cyan, fontSize = 10.sp)
+                                }
+                                if (avatarUrl != null) {
+                                    TextButton(onClick = {
+                                        avatarBusy = true; error = null
+                                        scope.launch {
+                                            try { Api.deleteAvatar(); avatarUrl = null }
+                                            catch (e: Exception) { error = e.message ?: "移除失败" }
+                                            finally { avatarBusy = false }
+                                        }
+                                    }, enabled = !avatarBusy) { Text("移除", color = Danger, fontSize = 10.sp) }
+                                }
+                            }
+                        }
+                    }
+                }
+                Text("头像和资料会同步到网页版与其他客户端。", color = Soft, fontSize = 9.sp)
                 LumenField(name, { name = it }, "显示名称")
                 LumenField(handle, { handle = it }, "Handle / 用户名别名")
                 LumenField(home, { home = it }, "所在城市 / 家乡")
@@ -1261,17 +1316,27 @@ private fun EditProfileDialog(profile: Profile, onSaved: (Profile) -> Unit, onCl
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Text("头像底色", color = Soft, fontSize = 10.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    palette.forEach { hex ->
+                        Box(
+                            Modifier.size(29.dp).clip(CircleShape).background(parseHex(hex))
+                                .border(if (avatarColor == hex) 2.dp else 1.dp, if (avatarColor == hex) Color.White else Color.White.copy(alpha = .25f), CircleShape)
+                                .clickable { avatarColor = hex },
+                        )
+                    }
+                }
                 if (error != null) Text(error!!, color = Danger, fontSize = 11.sp)
                 Button(
                     onClick = {
                         busy = true; error = null
                         scope.launch {
-                            try { onSaved(Api.updateProfile(name, handle, bio, home)) }
+                            try { onSaved(Api.updateProfile(name, handle, bio, home, avatarColor)) }
                             catch (e: Exception) { error = e.message ?: "保存失败" }
                             finally { busy = false }
                         }
                     },
-                    enabled = !busy,
+                    enabled = !busy && !avatarBusy,
                     shape = RoundedCornerShape(13.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF031018)),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -1392,74 +1457,226 @@ private fun InviteDialog(siteOrigin: String, initial: List<Invite>, onUpdated: (
     }
 }
 
+private enum class AdminTab { Users, Invites, Settings }
+
 @Composable
 private fun AdminDialog(currentUsername: String, currentRole: String, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var tab by remember { mutableStateOf(AdminTab.Users) }
+    var overview by remember { mutableStateOf<AdminOverview?>(null) }
     var users by remember { mutableStateOf<List<AdminUser>>(emptyList()) }
+    var invites by remember { mutableStateOf<List<AdminInvite>>(emptyList()) }
+    var settings by remember { mutableStateOf<AdminSettings?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var query by remember { mutableStateOf("") }
+    var roleFilter by remember { mutableStateOf("all") }
+    var tempPassword by remember { mutableStateOf<String?>(null) }
     var deleteTarget by remember { mutableStateOf<AdminUser?>(null) }
-    val scope = rememberCoroutineScope()
+    var siteName by remember { mutableStateOf("") }
+    var tagline by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var amapKey by remember { mutableStateOf("") }
+    var savingSettings by remember { mutableStateOf(false) }
+    var settingsMessage by remember { mutableStateOf<String?>(null) }
 
     fun load() {
         loading = true; error = null
         scope.launch {
-            try { users = Api.adminUsers() } catch (e: Exception) { error = e.message ?: "读取失败" }
+            try {
+                overview = Api.adminOverview()
+                users = Api.adminUsers()
+                invites = Api.adminInvites()
+                if (currentRole == "owner") {
+                    settings = Api.adminSettings()
+                    settings?.let {
+                        siteName = it.siteName
+                        tagline = it.tagline
+                        description = it.description
+                        amapKey = it.amapKey
+                    }
+                }
+            } catch (e: Exception) { error = e.message ?: "读取失败" }
             finally { loading = false }
         }
     }
     LaunchedEffect(Unit) { load() }
 
+    fun copy(value: String, label: String) {
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+            .setPrimaryClip(ClipData.newPlainText(label, value))
+        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    }
+
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Bg)) {
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回", tint = Ink) }
                     Column {
                         Text("后台管理", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Light)
-                        Text("${users.size} 个账号 · 当前 ${currentRole.uppercase()}", color = Soft, fontSize = 9.sp)
+                        Text("当前 ${currentRole.uppercase()} · 数据与账号控制台", color = Soft, fontSize = 9.sp)
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { load() }) { Icon(Icons.Outlined.Refresh, "刷新", tint = Cyan) }
                 }
-                if (error != null) Text(error!!, color = Danger, fontSize = 11.sp)
-                if (loading) {
-                    Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Cyan, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                if (error != null) Text(error!!, color = Danger, fontSize = 10.sp)
+                overview?.let { o ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AdminStat("${o.users}", "账号", Modifier.weight(1f))
+                        AdminStat("${o.photos}", "影像", Modifier.weight(1f))
+                        AdminStat("${o.activeInvites}", "邀请", Modifier.weight(1f))
+                        AdminStat(formatBytes(o.storageBytes), "存储", Modifier.weight(1f))
                     }
                 }
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(users, key = { it.id }) { user ->
-                        val self = user.username == currentUsername
-                        val owner = user.role == "owner"
-                        GlassCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(user.name, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                        Text("@${user.username} · ${user.role.uppercase()}", color = if (user.role == "owner") Violet else Soft, fontSize = 8.sp)
-                                    }
-                                    if (user.disabled) Text("已禁用", color = Danger, fontSize = 9.sp)
-                                }
-                                Text("${user.photos} 影像 · ${user.people} 旅人", color = Soft, fontSize = 8.sp)
-                                if (!self && !owner) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                                        TextButton(onClick = {
-                                            scope.launch {
-                                                try {
-                                                    Api.adminUpdateUser(user.id, role = if (user.role == "member") "admin" else "member")
-                                                    load()
-                                                } catch (e: Exception) { error = e.message ?: "操作失败" }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PersonFilterChip("用户", null, tab == AdminTab.Users) { tab = AdminTab.Users }
+                    PersonFilterChip("邀请码", null, tab == AdminTab.Invites) { tab = AdminTab.Invites }
+                    if (currentRole == "owner") {
+                        PersonFilterChip("站点设置", null, tab == AdminTab.Settings) { tab = AdminTab.Settings }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (overview != null) Text("${overview!!.activeUsers} 活跃 / ${overview!!.disabledUsers} 禁用", color = Soft, fontSize = 8.sp)
+                }
+
+                if (loading) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Cyan, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                    }
+                } else when (tab) {
+                    AdminTab.Users -> {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            OutlinedTextField(
+                                value = query,
+                                onValueChange = { query = it },
+                                singleLine = true,
+                                placeholder = { Text("搜索用户名 / 名称", fontSize = 11.sp, color = Soft) },
+                                leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Soft, modifier = Modifier.size(16.dp)) },
+                                shape = RoundedCornerShape(11.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Cyan,
+                                    unfocusedBorderColor = Color.White.copy(alpha = .14f),
+                                    focusedTextColor = Ink,
+                                    unfocusedTextColor = Ink,
+                                    focusedContainerColor = Color(0xFF06111D),
+                                    unfocusedContainerColor = Color(0xFF06111D),
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item { PersonFilterChip("全部", null, roleFilter == "all") { roleFilter = "all" } }
+                                item { PersonFilterChip("主人", null, roleFilter == "owner") { roleFilter = "owner" } }
+                                item { PersonFilterChip("管理员", null, roleFilter == "admin") { roleFilter = "admin" } }
+                                item { PersonFilterChip("成员", null, roleFilter == "member") { roleFilter = "member" } }
+                            }
+                            val filtered = users.filter { u ->
+                                (roleFilter == "all" || u.role == roleFilter) &&
+                                    (query.isBlank() || listOf(u.name, u.username).joinToString(" ").lowercase().contains(query.trim().lowercase()))
+                            }
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(filtered, key = { it.id }) { user ->
+                                    val self = user.username == currentUsername
+                                    val owner = user.role == "owner"
+                                    GlassCard(Modifier.fillMaxWidth()) {
+                                        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(user.name, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                                    Text("@${user.username} · ${user.role.uppercase()} · ${user.photos} 影像 / ${user.people} 旅人", color = if (owner) Violet else Soft, fontSize = 8.sp)
+                                                }
+                                                if (user.disabled) Text("已禁用", color = Danger, fontSize = 9.sp)
                                             }
-                                        }) { Text(if (user.role == "member") "设为管理员" else "设为成员", color = Cyan, fontSize = 9.sp) }
-                                        TextButton(onClick = {
-                                            scope.launch {
-                                                try { Api.adminUpdateUser(user.id, disabled = !user.disabled); load() }
-                                                catch (e: Exception) { error = e.message ?: "操作失败" }
+                                            if (!self && !owner) {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    TextButton(onClick = { scope.launch { try { tempPassword = Api.resetPassword(user.id) } catch (e: Exception) { error = e.message } } }) { Text("重置密码", color = Cyan, fontSize = 8.sp) }
+                                                    TextButton(onClick = {
+                                                        scope.launch {
+                                                            try { Api.adminUpdateUser(user.id, role = if (user.role == "member") "admin" else "member"); load() }
+                                                            catch (e: Exception) { error = e.message ?: "操作失败" }
+                                                        }
+                                                    }) { Text(if (user.role == "member") "升管理员" else "降成员", color = Cyan, fontSize = 8.sp) }
+                                                    TextButton(onClick = {
+                                                        scope.launch {
+                                                            try { Api.adminUpdateUser(user.id, disabled = !user.disabled); load() }
+                                                            catch (e: Exception) { error = e.message ?: "操作失败" }
+                                                        }
+                                                    }) { Text(if (user.disabled) "启用" else "禁用", color = Soft, fontSize = 8.sp) }
+                                                    TextButton(onClick = { deleteTarget = user }) { Text("删除", color = Danger, fontSize = 8.sp) }
+                                                }
                                             }
-                                        }) { Text(if (user.disabled) "启用" else "禁用", color = if (user.disabled) Cyan else Soft, fontSize = 9.sp) }
-                                        TextButton(onClick = { deleteTarget = user }) { Text("删除", color = Danger, fontSize = 9.sp) }
+                                        }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    AdminTab.Invites -> {
+                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(invites, key = { it.id }) { invite ->
+                                GlassCard(Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(invite.code, color = Ink, fontSize = 14.sp, letterSpacing = .5.sp)
+                                            Spacer(Modifier.weight(1f))
+                                            Text(if (invite.active) "可用 ${invite.maxUses - invite.uses}/${invite.maxUses}" else "不可用", color = if (invite.active) Cyan else Soft, fontSize = 8.sp)
+                                        }
+                                        Text("${invite.creatorName.ifBlank { invite.creator }} · ${invite.expiresAt.take(10)} 到期 · 已用 ${invite.uses}/${invite.maxUses}", color = Soft, fontSize = 8.sp)
+                                        Row {
+                                            TextButton(onClick = { copy("${Api.BASE}/?invite=${invite.code}", "LUMEN invite") }) { Text("复制链接", color = Cyan, fontSize = 9.sp) }
+                                            if (invite.active) {
+                                                TextButton(onClick = {
+                                                    scope.launch {
+                                                        try { Api.adminRevokeInvite(invite.id); load() }
+                                                        catch (e: Exception) { error = e.message ?: "撤销失败" }
+                                                    }
+                                                }) { Text("撤销", color = Danger, fontSize = 9.sp) }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (invites.isEmpty()) item { Text("暂无邀请码", color = Soft, fontSize = 10.sp, modifier = Modifier.padding(20.dp)) }
+                        }
+                    }
+                    AdminTab.Settings -> {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("站点设置 · 仅主人可改", color = Soft, fontSize = 9.sp)
+                            LumenField(siteName, { siteName = it }, "站点名称")
+                            LumenField(tagline, { tagline = it }, "副标题")
+                            OutlinedTextField(
+                                value = description,
+                                onValueChange = { description = it },
+                                label = { Text("站点描述") },
+                                minLines = 2,
+                                shape = RoundedCornerShape(13.dp),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cyan, unfocusedBorderColor = Color.White.copy(alpha = .14f), focusedTextColor = Ink, unfocusedTextColor = Ink),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            LumenField(amapKey, { amapKey = it }, "高德 API Key")
+                            if (settings?.amapFromEnv == true) Text("当前高德 Key 来自服务器 .env；留空会回退到环境变量。", color = Soft, fontSize = 8.sp)
+                            if (settingsMessage != null) Text(settingsMessage!!, color = Cyan, fontSize = 10.sp)
+                            Button(
+                                onClick = {
+                                    savingSettings = true; settingsMessage = null; error = null
+                                    scope.launch {
+                                        try {
+                                            settings = Api.updateAdminSettings(siteName, tagline, description, amapKey)
+                                            settingsMessage = "站点设置已保存"
+                                        } catch (e: Exception) { error = e.message ?: "保存失败" }
+                                        finally { savingSettings = false }
+                                    }
+                                },
+                                enabled = !savingSettings,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF031018)),
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                            ) {
+                                if (savingSettings) CircularProgressIndicator(Modifier.size(17.dp), color = Color(0xFF031018), strokeWidth = 2.dp)
+                                else Text("保存站点设置", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1468,6 +1685,15 @@ private fun AdminDialog(currentUsername: String, currentRole: String, onClose: (
         }
     }
 
+    tempPassword?.let { pwd ->
+        AlertDialog(
+            onDismissRequest = { tempPassword = null },
+            title = { Text("临时密码") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("请立即复制并交给对方，关闭后不再显示："); Text(pwd, color = Cyan, fontSize = 18.sp, letterSpacing = 1.sp) } },
+            confirmButton = { TextButton(onClick = { copy(pwd, "临时密码"); tempPassword = null }) { Text("复制并关闭") } },
+            dismissButton = { TextButton(onClick = { tempPassword = null }) { Text("关闭") } },
+        )
+    }
     deleteTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -1485,6 +1711,23 @@ private fun AdminDialog(currentUsername: String, currentRole: String, onClose: (
             dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } },
         )
     }
+}
+
+@Composable
+private fun AdminStat(value: String, label: String, modifier: Modifier = Modifier) {
+    GlassCard(modifier) {
+        Column(Modifier.padding(9.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Light, maxLines = 1)
+            Text(label, color = Soft, fontSize = 8.sp)
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024) return String.format(Locale.US, "%.0fK", kb)
+    return String.format(Locale.US, "%.1fM", kb / 1024.0)
 }
 
 @Composable

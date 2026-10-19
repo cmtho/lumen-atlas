@@ -7,7 +7,7 @@ const inChina = (lng, lat) => lng > 72 && lng < 138 && lat > 17 && lat < 55;
 function makeUserMarkerElement() {
   const el = document.createElement('div');
   el.className = 'lumen-user-marker';
-  el.innerHTML = '<span class="lumen-user-pulse"></span><span class="lumen-user-arrow"></span>';
+  el.innerHTML = '<span class="lumen-user-pulse"></span><span class="lumen-user-dot"></span>';
   return el;
 }
 

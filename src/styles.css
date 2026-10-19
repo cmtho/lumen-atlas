@@ -1763,16 +1763,11 @@ html.embed-map .atlas-view { position: fixed; inset: 0; }
   background: rgba(101, 244, 255, .09); border: 1px solid rgba(101, 244, 255, .3);
   animation: lumen-user-pulse 2.2s ease-out infinite;
 }
-.lumen-user-arrow {
-  position: absolute; left: 50%; top: 50%; width: 19px; height: 19px;
-  transform: translate(-50%, -50%) rotate(var(--bearing, 0deg));
-  border-radius: 50%; background: #65f4ff;
-  border: 2px solid #031018; box-shadow: 0 0 0 3px rgba(101, 244, 255, .16), 0 0 18px rgba(101, 244, 255, .7);
-}
-.lumen-user-arrow::after {
-  content: ''; position: absolute; left: 50%; top: -8px; transform: translateX(-50%);
-  border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid #65f4ff;
-  filter: drop-shadow(0 0 4px rgba(101, 244, 255, .7));
+.lumen-user-dot {
+  position: absolute; left: 50%; top: 50%; width: 13px; height: 13px;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  background: #65f4ff; border: 2px solid #031018;
+  box-shadow: 0 0 0 4px rgba(101, 244, 255, .14), 0 0 20px rgba(101, 244, 255, .85);
 }
 .lumen-native-place { position: relative; display: flex; flex-direction: column; align-items: center; transform: translateY(-2px); pointer-events: none; }
 .lumen-native-place > span {

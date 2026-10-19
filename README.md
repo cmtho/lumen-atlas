@@ -157,7 +157,7 @@ npm start
 
 个人使用的原生安装包已经构建：
 
-- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v7.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v7.apk)
+- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v8.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v8.apk)
 - **轻量 TWA 版**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
 - **Windows 便携版**：[LUMEN-ATLAS-Windows-20261018.zip](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Windows-20261018.zip)
 - **校验和**：[SHA256SUMS-APPS-20261018.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261018.txt)
@@ -167,8 +167,9 @@ npm start
 - Android 7.0+
 - Compose 原生登录、档案、上传、个人页
 - 球体地图由 WebView 承载，完整保留 LUMEN 的 globe 和中国行政区细节
-- 进入后默认请求定位，地图自动飞到当前位置，青色箭头 + 精度圈 + 朝向
+- 进入后默认请求定位，地图自动飞到当前位置，青色圆点 + 精度脉冲
 - 顶部定位按钮可随时回到当前位置
+- 个人资料可上传/移除头像、选择头像底色
 - 地图内可切换 **LUMEN 球体 / 高德中国底图**
 - 地图顶部搜索高德 POI / 城市 / 地标，选中后飞过去并显示金色图钉
 - 地图底部有最近影像轮播，点击打开悬浮液态玻璃大图；地图标记点击直接走原生大图
@@ -177,7 +178,7 @@ npm start
 - 地图顶部搜索入口，可搜索影像、地点、人物、标签
 - 原生邀请码：生成、设置有效期 / 次数、复制链接、撤销
 - 原生个人编辑：名称、handle、简介、所在城市
-- owner / admin 才显示后台管理；可改角色、禁用、删除账号
+- owner / admin 才显示后台管理；含概览、用户搜索/角色筛选、重置密码、邀请码总览/撤销、站点设置
 - 上传时可搜索高德地点，把整组照片写入同一个坐标
 - 数据通过 LUMEN API + Cookie 会话读写
 - 包名：`asia.chemcraze.lumen.nativeapp`

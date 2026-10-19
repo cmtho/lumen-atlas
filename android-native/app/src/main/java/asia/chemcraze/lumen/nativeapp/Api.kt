@@ -81,6 +81,37 @@ data class AdminUser(
     val people: Int,
 )
 
+data class AdminOverview(
+    val users: Int,
+    val activeUsers: Int,
+    val disabledUsers: Int,
+    val photos: Int,
+    val people: Int,
+    val invites: Int,
+    val activeInvites: Int,
+    val usedInvites: Int,
+    val storageBytes: Long,
+)
+
+data class AdminInvite(
+    val id: String,
+    val code: String,
+    val active: Boolean,
+    val uses: Int,
+    val maxUses: Int,
+    val expiresAt: String,
+    val creator: String,
+    val creatorName: String,
+)
+
+data class AdminSettings(
+    val siteName: String,
+    val tagline: String,
+    val description: String,
+    val amapKey: String,
+    val amapFromEnv: Boolean,
+)
+
 data class PlaceResult(
     val label: String,
     val detail: String,
@@ -234,8 +265,9 @@ object Api {
         )
     }
 
-    suspend fun updateProfile(name: String, handle: String, bio: String, home: String): Profile {
+    suspend fun updateProfile(name: String, handle: String, bio: String, home: String, avatarColor: String? = null): Profile {
         val body = JSONObject().put("name", name).put("handle", handle).put("bio", bio).put("home", home)
+        if (avatarColor != null) body.put("avatarColor", avatarColor)
         val text = patchJson("/api/profile", body)
         val p = JSONObject(text).getJSONObject("profile")
         return Profile(
@@ -288,6 +320,104 @@ object Api {
 
     suspend fun adminDeleteUser(id: String) {
         execute(Request.Builder().url("$BASE/api/admin/users/$id").delete().build())
+    }
+
+    suspend fun uploadAvatar(context: Context, uri: Uri): String {
+        val resolver = context.contentResolver
+        val bytes = withContext(Dispatchers.IO) {
+            resolver.openInputStream(uri)?.use { it.readBytes() } ?: throw ApiException("无法读取头像")
+        }
+        val name = runCatching {
+            resolver.query(uri, null, null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) c.getString(idx) else null
+                } else null
+            }
+        }.getOrNull() ?: "avatar.jpg"
+        val mime = resolver.getType(uri) ?: "image/jpeg"
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("avatar", name, bytes.toRequestBody(mime.toMediaType()))
+            .build()
+        val text = execute(Request.Builder().url("$BASE/api/profile/avatar").post(body).build())
+        return JSONObject(text).optString("avatarUrl").absolute()
+    }
+
+    suspend fun deleteAvatar() {
+        execute(Request.Builder().url("$BASE/api/profile/avatar").delete().build())
+    }
+
+    suspend fun adminOverview(): AdminOverview {
+        val text = execute(Request.Builder().url("$BASE/api/admin/overview").get().build())
+        val root = JSONObject(text)
+        val users = root.optJSONObject("users")
+        val invites = root.optJSONObject("invites")
+        val storage = root.optJSONObject("storage")
+        return AdminOverview(
+            users = users?.optInt("total", 0) ?: 0,
+            activeUsers = users?.optInt("active", 0) ?: 0,
+            disabledUsers = users?.optInt("disabled", 0) ?: 0,
+            photos = root.optInt("photos", 0),
+            people = root.optInt("people", 0),
+            invites = invites?.optInt("total", 0) ?: 0,
+            activeInvites = invites?.optInt("active", 0) ?: 0,
+            usedInvites = invites?.optInt("used", 0) ?: 0,
+            storageBytes = storage?.optLong("total", 0L) ?: 0L,
+        )
+    }
+
+    suspend fun adminInvites(): List<AdminInvite> {
+        val text = execute(Request.Builder().url("$BASE/api/admin/invites").get().build())
+        val arr = JSONObject(text).optJSONArray("invites") ?: return emptyList()
+        return (0 until arr.length()).map {
+            val i = arr.getJSONObject(it)
+            AdminInvite(
+                id = i.optString("id"),
+                code = i.optString("code"),
+                active = i.optBoolean("active", false),
+                uses = i.optInt("uses", 0),
+                maxUses = i.optInt("maxUses", 1),
+                expiresAt = i.optString("expiresAt"),
+                creator = i.optString("creator", "unknown"),
+                creatorName = i.optString("creatorName", ""),
+            )
+        }
+    }
+
+    suspend fun adminRevokeInvite(id: String) {
+        execute(Request.Builder().url("$BASE/api/admin/invites/$id").delete().build())
+    }
+
+    suspend fun resetPassword(id: String): String {
+        val text = execute(Request.Builder().url("$BASE/api/admin/users/$id/reset-password").post("{}".toRequestBody("application/json".toMediaType())).build())
+        return JSONObject(text).optString("temporaryPassword")
+    }
+
+    suspend fun adminSettings(): AdminSettings {
+        val text = execute(Request.Builder().url("$BASE/api/admin/settings").get().build())
+        val root = JSONObject(text)
+        val s = root.getJSONObject("settings")
+        return AdminSettings(
+            siteName = s.optString("siteName"),
+            tagline = s.optString("tagline"),
+            description = s.optString("description"),
+            amapKey = s.optString("amapKey"),
+            amapFromEnv = root.optBoolean("amapFromEnv", false),
+        )
+    }
+
+    suspend fun updateAdminSettings(siteName: String, tagline: String, description: String, amapKey: String): AdminSettings {
+        val body = JSONObject().put("siteName", siteName).put("tagline", tagline).put("description", description).put("amapKey", amapKey)
+        val text = patchJson("/api/admin/settings", body)
+        val root = JSONObject(text)
+        val s = root.getJSONObject("settings")
+        return AdminSettings(
+            siteName = s.optString("siteName"),
+            tagline = s.optString("tagline"),
+            description = s.optString("description"),
+            amapKey = s.optString("amapKey"),
+            amapFromEnv = root.optBoolean("amapFromEnv", false),
+        )
     }
 
     private fun String.absolute(): String = when {
