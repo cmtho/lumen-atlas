@@ -647,24 +647,13 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
     });
 
     map.addLayer({
-      id: 'photo-cluster-glow', type: 'circle', source: 'photos',
+      id: 'photo-cluster-dot', type: 'circle', source: 'photos',
       filter: ['has', 'point_count'],
       paint: {
         'circle-color': c.accent,
-        'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 22, 12, 40, 30, 56],
-        'circle-blur': 1,
-        'circle-opacity': .18,
-      },
-    });
-    map.addLayer({
-      id: 'photo-cluster', type: 'circle', source: 'photos',
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-color': themeRef.current === 'dark' ? 'rgba(6,20,32,.72)' : 'rgba(246,253,255,.78)',
-        'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 13, 12, 18, 30, 24],
-        'circle-stroke-color': c.accent,
-        'circle-stroke-width': 1.1,
-        'circle-stroke-opacity': .85,
+        'circle-radius': 4,
+        'circle-blur': .35,
+        'circle-opacity': .95,
       },
     });
     map.addLayer({
@@ -810,7 +799,7 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
       if (pickRef.current.pickMode) { map.getCanvas().style.cursor = 'crosshair'; return; }
       let hits = [];
       try {
-        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster', 'track-line', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
+        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster-dot', 'track-line', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
       } catch {}
       map.getCanvas().style.cursor = hits.length ? 'pointer' : '';
 
@@ -882,7 +871,7 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
       }
       let hits = [];
       try {
-        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster', 'track-line', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
+        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster-dot', 'track-line', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
       } catch {}
       if (!hits.length) return;
       const trackHit = hits.find(h => h.layer.id === 'track-line');
@@ -891,7 +880,7 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
         animateTrackDraw(map, trackHit.properties?.id);
         return;
       }
-      const cluster = hits.find(h => h.layer.id === 'photo-cluster');
+      const cluster = hits.find(h => h.layer.id === 'photo-cluster-dot');
       if (cluster) {
         const src = map.getSource('photos');
         src.getClusterExpansionZoom(cluster.properties.cluster_id, (err, z) => {
