@@ -394,6 +394,19 @@ sudo ufw status
 
 高德控制台需要把域名加入 Key 白名单，见[高德地图配置](#高德地图配置)。
 
+### 11. 定期备份
+
+生产环境建议每天定时备份 `data/` 与 `.env`。仓库提供 `scripts/backup.sh`，默认备份到 `/var/backups/lumen-atlas`，保留最近 7 份：
+
+```bash
+0 3 * * * /opt/lumen-atlas/scripts/backup.sh >> /var/log/lumen-backup.log 2>&1
+```
+
+注意事项：
+
+- 本地备份无法防止整机磁盘或机器故障，建议再同步一份到对象存储或下载到本机。
+- 恢复前先停止服务，解压覆盖 `data/` 和 `.env` 后再启动，避免运行中的进程覆盖恢复后的数据。
+
 ---
 
 ## 环境变量
@@ -635,6 +648,30 @@ data/owner-login.txt
 ```bash
 node scripts/create-demo-db.mjs /path/to/package/data
 ```
+
+---
+
+## 上传接口的时间字段
+
+照片时间由四个字段协作表达，接口读取和前端展示都不要绕过这套约定：
+
+| 字段 | 含义 | 示例 |
+| --- | --- | --- |
+| `capturedAt` | UTC 瞬时，ISO 字符串，可能为 `null`；用于排序 | `2026-10-19T08:30:00.000Z` |
+| `capturedLocal` | 相机或用户所在地的墙上时间，不带时区；用于展示 | `2026-10-19T16:30:00` |
+| `tzOffset` | EXIF 时区偏移，可能为 `null` | `+08:00` |
+| `dateSource` | 时间来源 | `exif` / `exif-local` / `file` / `manual` |
+
+客户端责任：
+
+- 无 EXIF 的文件（截图、社交软件保存的图片、视频截帧）必须传 `capturedLocal`（浏览器本地时间）和 `date`（对应 UTC 瞬时），否则服务端无法推断用户时区，日期会缺失。
+- 多文件上传时，`metadata` 数组长度必须等于文件数量，数量不足会返回 400。
+- 单文件上传允许不带 `metadata`，以兼容直接调用 API 的脚本。
+
+已知行为：
+
+- 单文件且不带 `metadata`、文件也没有 EXIF 时，`capturedAt` 和 `capturedLocal` 都为空，前端显示“未知日期”。这是有意行为，不会用服务器当前时间填充。
+- `dateSource = 'file'` 且 `capturedLocal` 恰好等于 `capturedAt` 的 UTC 墙上时间时，前端会按浏览器时区重新格式化。这一分支用于兼容旧版本按服务器时区写入的历史数据。
 
 ---
 

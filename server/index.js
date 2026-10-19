@@ -249,6 +249,8 @@ function normalizePhotoInput(meta, exif, file, prepared, people, userId) {
       : localWallFromDate(manualDate);
     capture = { capturedAt: manualDate, capturedLocal: local, tzOffset: normalizeOffset(meta.tzOffset), dateSource: meta.dateSource === 'file' ? 'file' : 'manual' };
   } else {
+    // 没有 EXIF 时间时不要伪造“现在”：单文件且无 metadata 的情况下，
+    // capturedAt / capturedLocal 会留空，前端显示“未知日期”，这是有意行为。
     capture = resolveCaptureTime(exif, file.lastModified);
   }
   const baseName = path.basename(file.originalname, path.extname(file.originalname));
@@ -633,9 +635,9 @@ app.post('/api/photos', upload.array('files', 30), async (req, res, next) => {
       return res.status(400).json({ error: 'metadata 不是合法的 JSON' });
     }
     if (!Array.isArray(metas)) metas = [];
-    if (req.files.length > 1 && !metas.length) {
+    if (req.files.length > 1 && metas.length < req.files.length) {
       await cleanupUploadedFiles(req);
-      return res.status(400).json({ error: '缺少照片元数据，请从上传页面重新提交' });
+      return res.status(400).json({ error: '照片元数据数量与文件数量不一致，请从上传页面重新提交' });
     }
     const db = await loadDb();
     const people = db.people.filter(p => p.userId === req.user.id);

@@ -109,7 +109,13 @@ function wallSortValue(value) {
 }
 
 export function photoDisplayDate(photo) {
-  return photo?.capturedLocal || photo?.capturedAt || null;
+  const local = photo?.capturedLocal;
+  const at = photo?.capturedAt;
+  if (local && at && photo.dateSource === 'file') {
+    const utcWall = new Date(at).toISOString().slice(0, 19);
+    if (utcWall === local) return at;
+  }
+  return local || at || null;
 }
 
 export function photoSortValue(photo) {
@@ -125,7 +131,7 @@ export function photoYear(photo) {
 }
 
 export function photoDateInput(photo) {
-  const local = photo?.capturedLocal;
+  const local = photoDisplayDate(photo);
   const parts = wallParts(local);
   if (parts) {
     const pad = n => String(n).padStart(2, '0');
