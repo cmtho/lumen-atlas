@@ -16,7 +16,9 @@ import AdminView from './components/AdminView.jsx';
 import { api } from './lib/api.js';
 import { buildPlaces, regionKey } from './lib/utils.js';
 
-const EMBED_MAP = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === 'map';
+const EMBED_PARAM = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('embed') : null;
+const EMBED_MAP = EMBED_PARAM === 'map';
+const EMBED_TRACKS = EMBED_PARAM === 'tracks';
 const EMBED_PROVIDER = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('provider') === 'amap' ? 'amap' : 'libre';
 const EMPTY_FILTER = { q: '', personId: '', year: '', province: '', placeKey: '' };
 
@@ -51,7 +53,7 @@ export default function App() {
   const [authRequired, setAuthRequired] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('lumen-theme') || 'dark');
   const [mapProvider, setMapProvider] = useState(() => EMBED_MAP ? EMBED_PROVIDER : (localStorage.getItem('lumen-map-provider') || 'libre'));
-  const [view, setView] = useState('atlas');
+  const [view, setView] = useState(EMBED_TRACKS ? 'tracks' : 'atlas');
   const [toast, setToast] = useState(null);
   const [personFilter, setPersonFilter] = useState(null);
   const [selectedPlaceKey, setSelectedPlaceKey] = useState(null);
@@ -104,7 +106,11 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('embed-map', EMBED_MAP);
-    return () => document.documentElement.classList.remove('embed-map');
+    document.documentElement.classList.toggle('embed-tracks', EMBED_TRACKS);
+    return () => {
+      document.documentElement.classList.remove('embed-map');
+      document.documentElement.classList.remove('embed-tracks');
+    };
   }, []);
 
   useEffect(() => {
@@ -423,7 +429,7 @@ export default function App() {
     <div className={`app-shell view-${view}`}>
       <div className="ambient-bg" aria-hidden="true"><span className="ambient-a" /><span className="ambient-b" /><span className="ambient-c" /></div>
       <div className="grain" aria-hidden="true" />
-      {!EMBED_MAP && <Header
+      {!EMBED_MAP && !EMBED_TRACKS && <Header
         view={view} setView={guardSetView} theme={theme}
         onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
         onUpload={() => openUpload()} profile={data.profile}
@@ -431,18 +437,20 @@ export default function App() {
       />}
 
       <main className="app-main">
-        <AtlasView
-          active={view === 'atlas'}
-          profile={data.profile} photos={photos} places={places} filteredPlaces={filteredPlaces}
-          people={people} personFilter={personFilter} onPersonFilter={setPersonFilter} regions={regions}
-          selectedPlace={selectedPlace} onSelectPlace={handleSelectPlace}
-          onClosePlace={() => setSelectedPlaceKey(null)} onUpload={() => openUpload()}
-          onOpenPhoto={openPhoto} onViewArchive={(key) => { if (!key) openArchive(); else openArchive({ placeKey: key }); }}
-          onProvinceClick={handleProvinceClick} onCityClick={handleCityClick} onDistrictClick={handleDistrictClick} focus={mapFocus} setFocus={setMapFocus}
-          theme={theme} onNotice={notice} pickMode={pickMode} onPick={handlePick}
-          provider={mapProvider} setProvider={changeMapProvider} amapKey={data.meta?.amapKey || ''}
-          userLocation={userLocation} nativePlace={nativePlace} tracks={tracks}
-        />
+        {!EMBED_TRACKS && (
+          <AtlasView
+            active={view === 'atlas'}
+            profile={data.profile} photos={photos} places={places} filteredPlaces={filteredPlaces}
+            people={people} personFilter={personFilter} onPersonFilter={setPersonFilter} regions={regions}
+            selectedPlace={selectedPlace} onSelectPlace={handleSelectPlace}
+            onClosePlace={() => setSelectedPlaceKey(null)} onUpload={() => openUpload()}
+            onOpenPhoto={openPhoto} onViewArchive={(key) => { if (!key) openArchive(); else openArchive({ placeKey: key }); }}
+            onProvinceClick={handleProvinceClick} onCityClick={handleCityClick} onDistrictClick={handleDistrictClick} focus={mapFocus} setFocus={setMapFocus}
+            theme={theme} onNotice={notice} pickMode={pickMode} onPick={handlePick}
+            provider={mapProvider} setProvider={changeMapProvider} amapKey={data.meta?.amapKey || ''}
+            userLocation={userLocation} nativePlace={nativePlace} tracks={tracks}
+          />
+        )}
         {view === 'admin' && isStaff && <AdminView account={data.account} onNotice={notice} onSiteUpdate={handleSiteUpdate} />}
         {view === 'archive' && (
           <ArchiveView
@@ -487,7 +495,7 @@ export default function App() {
         )}
       </main>
 
-      {!EMBED_MAP && <MobileNav view={view} setView={guardSetView} onUpload={() => openUpload()} />}
+      {!EMBED_MAP && !EMBED_TRACKS && <MobileNav view={view} setView={guardSetView} onUpload={() => openUpload()} />}
 
       <SearchPalette
         open={searchOpen} onClose={() => setSearchOpen(false)}

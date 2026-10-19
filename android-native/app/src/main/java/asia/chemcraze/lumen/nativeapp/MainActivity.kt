@@ -74,6 +74,7 @@ import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.AlertDialog
@@ -397,8 +398,9 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
                     val items = listOf(
                         Triple("星图", Icons.Outlined.Public, 0),
                         Triple("档案", Icons.Outlined.PhotoLibrary, 1),
-                        Triple("上传", Icons.Outlined.AddCircleOutline, 2),
-                        Triple("我的", Icons.Outlined.PersonOutline, 3),
+                        Triple("轨迹", Icons.Outlined.Route, 2),
+                        Triple("上传", Icons.Outlined.AddCircleOutline, 3),
+                        Triple("我的", Icons.Outlined.PersonOutline, 4),
                     )
                     items.forEach { (label, icon, index) ->
                         NavigationBarItem(
@@ -422,7 +424,8 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
                 when (tab) {
                     0 -> GlobeScreen(data, onPhoto = { selectedPhoto = it }, userLocation = userLocation)
                     1 -> ArchiveScreen(data, onPhoto = { selectedPhoto = it }, onRefresh = { refresh() })
-                    2 -> UploadScreen(
+                    2 -> TracksScreen()
+                    3 -> UploadScreen(
                         onUploaded = { count ->
                             refresh()
                             tab = 1
@@ -653,6 +656,62 @@ private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, userLocation:
             },
             onClose = { showPlaceSearch = false },
         )
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun TracksScreen() {
+    val context = LocalContext.current
+    val loading = remember { mutableStateOf(true) }
+    val webView = remember {
+        WebView(context).apply {
+            setBackgroundColor(0xFF02060E.toInt())
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            settings.setSupportZoom(false)
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    loading.value = false
+                }
+
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val url = request?.url ?: return false
+                    if (url.host == "lumen.chemcraze.asia") return false
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url)) }
+                    return true
+                }
+            }
+            webChromeClient = WebChromeClient()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        Api.syncWebViewCookie()
+        webView.loadUrl("${Api.BASE}/?embed=tracks&v=native-tracks1")
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching {
+                webView.stopLoading()
+                webView.loadUrl("about:blank")
+                webView.destroy()
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color(0xFF02060E))) {
+        AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
+        if (loading.value) {
+            CircularProgressIndicator(
+                color = Cyan,
+                strokeWidth = 2.dp,
+                modifier = Modifier.align(Alignment.Center).size(25.dp),
+            )
+        }
     }
 }
 

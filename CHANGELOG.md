@@ -29,6 +29,9 @@
   - 总里程、天数、颜色和标题
   - 未保存离开提示
 - 导航新增「轨迹」入口，桌面端和移动端共用同一套 tabs。
+- Android 原生客户端新增第 5 个「轨迹」tab，通过 `?embed=tracks` 加载轨迹页。
+- 轨迹 WebView 模式隐藏站点 Header 和移动导航，适配原生底部栏。
+- Android 原生 APK 更新至 `versionCode 7 / versionName 1.5.0`。
 - 管理员删除用户时同步清理该用户的轨迹。
 
 ### Changed

@@ -1919,3 +1919,7 @@ html.embed-map .lumen-user-marker { pointer-events: none; }
   .mobile-tab { width: 42px; font-size: 7px; padding: 4px 0; }
   .mobile-nav { padding-left: 6px; padding-right: 6px; }
 }
+
+/* native tracks WebView */
+html.embed-tracks .page-view { padding-top: max(16px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+html.embed-tracks .app-main { min-height: 100dvh; }

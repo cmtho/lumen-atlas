@@ -157,7 +157,7 @@ npm start
 
 个人使用的原生安装包已经构建：
 
-- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v8.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v8.apk)
+- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v9.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v9.apk)
 - **轻量 TWA 版**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
 - **Windows 便携版**：[LUMEN-ATLAS-Windows-20261018.zip](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Windows-20261018.zip)
 - **校验和**：[SHA256SUMS-APPS-20261018.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261018.txt)
@@ -166,6 +166,8 @@ npm start
 
 - Android 7.0+
 - Compose 原生登录、档案、上传、个人页
+- 原生底部导航包含星图 / 档案 / 轨迹 / 上传 / 我的
+- 轨迹页通过 `?embed=tracks` WebView 加载，可创建和编辑自定义轨迹
 - 球体地图由 WebView 承载，完整保留 LUMEN 的 globe 和中国行政区细节
 - 进入后默认请求定位，地图自动飞到当前位置，青色圆点 + 精度脉冲
 - 顶部定位按钮可随时回到当前位置
