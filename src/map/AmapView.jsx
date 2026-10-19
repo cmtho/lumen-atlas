@@ -247,7 +247,7 @@ export default function AmapView({
       el.appendChild(inner);
       el.addEventListener('click', (ev) => { ev.stopPropagation(); onPhotoOpen?.(photo.id); });
       const marker = new amapApiRef.current.Marker({
-        position: [lng, lat], content: el, offset: new window.AMap.Pixel(-9, -9), zIndex: 130, bubble: false,
+        position: [lng, lat], content: el, offset: new window.AMap.Pixel(-4, -4), zIndex: 130, bubble: false,
       });
       marker.setMap(map);
       markersRef.current.push(marker);

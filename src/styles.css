@@ -1383,14 +1383,14 @@ html[data-theme='dark'] .amap-host.amap-dom-render .amap-layer-tile { filter: in
 .amap-error span { color: var(--red); font-size: 10px; }
 .amap-error small { color: var(--muted); font-size: 9px; line-height: 1.65; }
 .amap-photo-marker {
-  width: 18px; height: 18px; border-radius: 50%; padding: 0; border: 2px solid var(--cyan);
-  background: #efffff; box-shadow: 0 0 0 5px rgba(100,244,255,.13), 0 0 20px rgba(100,244,255,.8);
-  display: grid; place-items: center; cursor: pointer; transition: transform .2s, background .2s;
+  width: 8px; height: 8px; border-radius: 50%; padding: 0; border: 0;
+  background: var(--cyan); box-shadow: 0 0 7px rgba(100,244,255,.9), 0 0 16px rgba(100,244,255,.35);
+  display: grid; place-items: center; cursor: pointer; transition: background .2s, box-shadow .2s;
 }
-.amap-photo-marker span { width: 4px; height: 4px; border-radius: 50%; background: var(--cyan); }
-.amap-photo-marker:hover { transform: scale(1.18); }
-.amap-photo-marker.is-selected { border-color: #fff4cf; background: #ffd178; box-shadow: 0 0 0 6px rgba(255,209,120,.17), 0 0 24px rgba(255,209,120,.9); }
-.amap-photo-marker.is-selected span { background: #7c4a00; }
+.amap-photo-marker span { width: 100%; height: 100%; border-radius: 50%; background: transparent; }
+.amap-photo-marker:hover { box-shadow: 0 0 8px rgba(100,244,255,1), 0 0 20px rgba(100,244,255,.55); }
+.amap-photo-marker.is-selected { background: #ffd178; box-shadow: 0 0 8px rgba(255,209,120,.95), 0 0 18px rgba(255,209,120,.45); }
+.amap-photo-marker.is-selected span { background: transparent; }
 .amap-pick-marker { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #ffd178; box-shadow: 0 0 0 7px rgba(255,209,120,.14), 0 0 22px rgba(255,209,120,.8); }
 .amap-view .amap-logo { left: auto !important; right: 150px !important; bottom: 2px !important; opacity: .65; }
 .amap-view .amap-copyright { left: auto !important; right: 205px !important; bottom: 1px !important; opacity: .55; font-size: 9px !important; }
