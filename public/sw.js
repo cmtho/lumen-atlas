@@ -1,6 +1,6 @@
 /* LUMEN ATLAS — minimal app-shell service worker.
    Never caches API, private media, uploads or avatars. */
-const CACHE = 'lumen-shell-v1';
+const CACHE = 'lumen-shell-v2';
 const SHELL = [
   '/',
   '/manifest.webmanifest',
