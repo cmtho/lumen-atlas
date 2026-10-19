@@ -362,7 +362,7 @@ export default function TracksView({ tracks = [], regions, onTracksChange, onNot
               return (
                 <article className="track-card glass" key={track.id}>
                   <div className="track-card-top">
-                    <span className="track-card-index">TRACK / {String(index + 1).padStart(2, '0')}</span>
+                    <span className="track-card-index">TRACK / {String(index + 1).padStart(2, '0')}{track.auto && <em className="track-auto-badge" title="按相邻照片超过 24 小时自动生成">AUTO</em>}</span>
                     <span className="track-card-line" style={{ background: track.color }} />
                   </div>
                   {renameId === track.id ? (

@@ -342,6 +342,75 @@ function publicSite(db) {
   };
 }
 
+const AUTO_TRACK_GAP_MS = 24 * 60 * 60 * 1000;
+const AUTO_TRACK_COLORS = ['#65f4ff', '#ffbd73', '#b79cff', '#7df0a8', '#ff8ea8', '#9fc4ff'];
+
+function autoTrackStops(photos) {
+  const items = [];
+  for (const photo of photos) {
+    if (photo.demo) continue;
+    const lng = Number(photo.lng);
+    const lat = Number(photo.lat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+    const at = photo.capturedAt || photo.capturedLocal;
+    const time = at ? Date.parse(at) : NaN;
+    if (!at || !Number.isFinite(time)) continue;
+    items.push({
+      time,
+      stop: {
+        name: photo.locationName || photo.city || photo.province || photo.title || '地点',
+        lng,
+        lat,
+        at,
+      },
+    });
+  }
+  items.sort((a, b) => a.time - b.time);
+  const groups = [];
+  let current = [];
+  for (const item of items) {
+    if (current.length && item.time - current[current.length - 1].time > AUTO_TRACK_GAP_MS) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(item);
+  }
+  if (current.length) groups.push(current);
+  return groups
+    .filter(group => group.length >= 2)
+    .map(group => {
+      const stops = group.map(item => item.stop);
+      if (stops.length <= 50) return stops;
+      return Array.from({ length: 50 }, (_, i) => stops[Math.round(i * (stops.length - 1) / 49)]);
+    });
+}
+
+function autoTrackTitle(stops) {
+  const first = String(stops[0]?.at || '').slice(0, 10).replaceAll('-', '.');
+  const last = String(stops[stops.length - 1]?.at || '').slice(0, 10).replaceAll('-', '.');
+  return first === last ? `照片轨迹 · ${first}` : `照片轨迹 · ${first} – ${last}`;
+}
+
+function syncAutoTracks(db, userId) {
+  if (!Array.isArray(db.tracks)) db.tracks = [];
+  db.tracks = db.tracks.filter(track => !(track.userId === userId && track.auto));
+  const groups = autoTrackStops(db.photos.filter(photo => photo.userId === userId));
+  const now = new Date().toISOString();
+  groups.forEach((stops, index) => {
+    db.tracks.push({
+      id: nextId('trk'),
+      userId,
+      title: autoTrackTitle(stops),
+      stops,
+      color: AUTO_TRACK_COLORS[index % AUTO_TRACK_COLORS.length],
+      notes: `按相邻照片超过 24 小时自动分组，共 ${stops.length} 个地点`,
+      auto: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
 function normalizeTrackStops(value) {
   if (!Array.isArray(value) || value.length < 2) return { error: '轨迹至少需要两个地点' };
   if (value.length > 50) return { error: '轨迹最多支持 50 个地点' };
@@ -701,6 +770,7 @@ app.post('/api/photos', upload.array('files', 30), async (req, res, next) => {
     if (photos.length) {
       total = await mutate(database => {
         database.photos.unshift(...photos);
+        syncAutoTracks(database, req.user.id);
         return database.photos.filter(p => p.userId === req.user.id).length;
       });
     } else {
@@ -717,6 +787,7 @@ app.patch('/api/photos/:id', async (req, res) => {
   const result = await mutate(db => {
     const photo = db.photos.find(p => p.id === req.params.id && p.userId === req.user.id);
     if (!photo) return null;
+    const timeKey = [photo.capturedAt, photo.capturedLocal, photo.lat, photo.lng].join('|');
     const b = req.body || {};
     const textFields = ['title', 'country', 'countryCode', 'province', 'city', 'district', 'locationName', 'notes', 'camera', 'lens', 'aperture', 'shutter', 'focalLength', 'dimensions'];
     for (const key of textFields) if (key in b) photo[key] = safeText(b[key], key === 'notes' ? 2000 : 160);
@@ -742,6 +813,9 @@ app.patch('/api/photos/:id', async (req, res) => {
       const reg = lookupRegionCenter(photo.province, photo.city, photo.district);
       if (reg?.center) { photo.lng = reg.center[0]; photo.lat = reg.center[1]; }
     }
+    if (timeKey !== [photo.capturedAt, photo.capturedLocal, photo.lat, photo.lng].join('|')) {
+      syncAutoTracks(db, req.user.id);
+    }
     photo.updatedAt = new Date().toISOString();
     return { ...photo };
   });
@@ -763,7 +837,9 @@ app.delete('/api/photos/:id', async (req, res) => {
   const removed = await mutate(db => {
     const idx = db.photos.findIndex(p => p.id === req.params.id && p.userId === req.user.id);
     if (idx < 0) return null;
-    return db.photos.splice(idx, 1)[0];
+    const [photo] = db.photos.splice(idx, 1);
+    syncAutoTracks(db, req.user.id);
+    return photo;
   });
   if (!removed) return res.status(404).json({ error: '影像不存在' });
   await removeMedia(removed);
@@ -813,6 +889,7 @@ app.patch('/api/tracks/:id', async (req, res) => {
     if (parsed) track.stops = parsed.stops;
     if ('color' in b) track.color = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#65f4ff';
     if ('notes' in b) track.notes = safeText(b.notes, 2000);
+    if (track.auto) track.auto = false;
     track.updatedAt = new Date().toISOString();
     return { track };
   });
@@ -922,6 +999,7 @@ app.post('/api/demo/clear', async (req, res) => {
   const removed = await mutate(db => {
     const before = db.photos.length;
     db.photos = db.photos.filter(p => !(p.userId === req.user.id && p.demo));
+    syncAutoTracks(db, req.user.id);
     return before - db.photos.length;
   });
   res.json({ ok: true, removed });
@@ -935,6 +1013,7 @@ app.post('/api/demo/restore', async (req, res) => {
     const existing = new Set(db.photos.filter(p => p.userId === req.user.id).map(p => p.id));
     const demo = getDemoPhotosForUser(user, people).filter(p => !existing.has(p.id));
     db.photos.unshift(...demo);
+    syncAutoTracks(db, req.user.id);
     return demo.length;
   });
   res.json({ ok: true, added });

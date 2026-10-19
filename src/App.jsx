@@ -161,6 +161,13 @@ export default function App() {
     setData(prev => (prev ? { ...prev, tracks: next } : prev));
   }, []);
 
+  const refreshTracks = useCallback(async () => {
+    try {
+      const res = await api.tracks();
+      setData(prev => (prev ? { ...prev, tracks: res.tracks } : prev));
+    } catch {}
+  }, []);
+
   const filteredPlaces = useMemo(() => {
     if (!personFilter) return places;
     return places.filter(place => place.photos.some(p => p.personIds?.includes(personFilter)));
@@ -290,6 +297,7 @@ export default function App() {
 
   const handleUploadComplete = (newPhotos) => {
     setPhotos(prev => [...newPhotos, ...prev]);
+    refreshTracks();
     const first = newPhotos[0];
     if (first) {
       setSelectedPlaceKey(regionKey(first));
@@ -301,12 +309,14 @@ export default function App() {
   const handleSavePhoto = async (id, patch) => {
     const res = await api.updatePhoto(id, patch);
     updatePhoto(res.photo);
+    refreshTracks();
     notice('影像档案已更新');
   };
 
   const handleDeletePhoto = async (id) => {
     await api.deletePhoto(id);
     setPhotos(prev => prev.filter(p => p.id !== id));
+    refreshTracks();
     notice('影像已从星图中移除');
   };
 
