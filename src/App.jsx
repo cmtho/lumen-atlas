@@ -55,6 +55,8 @@ export default function App() {
   const [personFilter, setPersonFilter] = useState(null);
   const [selectedPlaceKey, setSelectedPlaceKey] = useState(null);
   const [mapFocus, setMapFocus] = useState({ lat: 34, lng: 100, zoom: 2.25, ts: Date.now() });
+  const [userLocation, setUserLocation] = useState(null);
+  const [nativePlace, setNativePlace] = useState(null);
   const [archiveFilter, setArchiveFilter] = useState(EMPTY_FILTER);
   const [searchOpen, setSearchOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -96,6 +98,26 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('embed-map', EMBED_MAP);
     return () => document.documentElement.classList.remove('embed-map');
+  }, []);
+
+  useEffect(() => {
+    if (!EMBED_MAP) return undefined;
+    window.__lumenNativeLocation = (lat, lng, heading = 0, accuracy = 0, fly = false) => {
+      const nlat = Number(lat), nlng = Number(lng);
+      if (!Number.isFinite(nlat) || !Number.isFinite(nlng)) return;
+      setUserLocation({ lat: nlat, lng: nlng, heading: Number(heading) || 0, accuracy: Number(accuracy) || 0, ts: Date.now() });
+      if (fly) setMapFocus({ lat: nlat, lng: nlng, zoom: 12, ts: Date.now() });
+    };
+    window.__lumenNativePlace = (label, lat, lng, zoom = 12) => {
+      const nlat = Number(lat), nlng = Number(lng);
+      if (!Number.isFinite(nlat) || !Number.isFinite(nlng)) return;
+      setNativePlace({ label: String(label || '地图位置'), lat: nlat, lng: nlng, ts: Date.now() });
+      setMapFocus({ lat: nlat, lng: nlng, zoom: Number(zoom) || 12, ts: Date.now() });
+    };
+    return () => {
+      delete window.__lumenNativeLocation;
+      delete window.__lumenNativePlace;
+    };
   }, []);
 
   useEffect(() => {
@@ -408,6 +430,7 @@ export default function App() {
           onProvinceClick={handleProvinceClick} onCityClick={handleCityClick} onDistrictClick={handleDistrictClick} focus={mapFocus} setFocus={setMapFocus}
           theme={theme} onNotice={notice} pickMode={pickMode} onPick={handlePick}
           provider={mapProvider} setProvider={changeMapProvider} amapKey={data.meta?.amapKey || ''}
+          userLocation={userLocation} nativePlace={nativePlace}
         />
         {view === 'admin' && isStaff && <AdminView account={data.account} onNotice={notice} onSiteUpdate={handleSiteUpdate} />}
         {view === 'archive' && (

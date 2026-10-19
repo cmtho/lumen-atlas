@@ -159,7 +159,31 @@ function journeyData(photos) {
   };
 }
 
-export default function AtlasMap({ theme, photos, selectedId, focus, regions, onPhotoOpen, onProvinceClick, onCityClick, onDistrictClick, onNotice, onMapReady, pickMode, onPick, provider = 'libre', setProvider, amapKey = '' }) {
+function makeUserMarkerElement() {
+  const el = document.createElement('div');
+  el.className = 'lumen-user-marker';
+  el.innerHTML = '<span class="lumen-user-pulse"></span><span class="lumen-user-arrow"></span>';
+  return el;
+}
+
+function paintUserMarker(el, location) {
+  const heading = Number(location?.heading);
+  el.style.setProperty('--bearing', `${Number.isFinite(heading) ? heading : 0}deg`);
+  const accuracy = Math.min(96, Math.max(34, Number(location?.accuracy) || 40));
+  el.style.setProperty('--accuracy', `${accuracy}px`);
+}
+
+function makePlaceMarkerElement(label) {
+  const el = document.createElement('div');
+  el.className = 'lumen-native-place';
+  const dot = document.createElement('span');
+  const text = document.createElement('em');
+  text.textContent = label || '地图位置';
+  el.append(dot, text);
+  return el;
+}
+
+export default function AtlasMap({ theme, photos, selectedId, focus, regions, onPhotoOpen, onProvinceClick, onCityClick, onDistrictClick, onNotice, onMapReady, pickMode, onPick, provider = 'libre', setProvider, amapKey = '', userLocation = null, nativePlace = null }) {
   const hostRef = useRef(null);
   const mapRef = useRef(null);
   const amapRef = useRef(null);
@@ -194,6 +218,8 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
   const hoverDistrict = useRef(null);
   const adminHoverRef = useRef('');
   const lastHoverCalcRef = useRef(0);
+  const userMarkerRef = useRef(null);
+  const nativePlaceMarkerRef = useRef(null);
 
   dataRef.current = { photos, selectedId };
   callbacksRef.current = { onPhotoOpen, onProvinceClick, onCityClick, onDistrictClick, onNotice, onPick };
@@ -860,6 +886,58 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
   }, [focus, ready]);
 
   useEffect(() => {
+    if (provider !== 'libre' || !ready || !mapRef.current) {
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
+      return;
+    }
+    if (!userLocation) {
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
+      return;
+    }
+    const map = mapRef.current;
+    if (!userMarkerRef.current) {
+      const el = makeUserMarkerElement();
+      userMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([userLocation.lng, userLocation.lat])
+        .addTo(map);
+    } else {
+      userMarkerRef.current.setLngLat([userLocation.lng, userLocation.lat]);
+    }
+    paintUserMarker(userMarkerRef.current.getElement(), userLocation);
+  }, [userLocation, provider, ready]);
+
+  useEffect(() => {
+    if (provider !== 'libre' || !ready || !mapRef.current) {
+      nativePlaceMarkerRef.current?.remove();
+      nativePlaceMarkerRef.current = null;
+      return;
+    }
+    if (!nativePlace) {
+      nativePlaceMarkerRef.current?.remove();
+      nativePlaceMarkerRef.current = null;
+      return;
+    }
+    const map = mapRef.current;
+    if (!nativePlaceMarkerRef.current) {
+      const el = makePlaceMarkerElement(nativePlace.label);
+      nativePlaceMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([nativePlace.lng, nativePlace.lat])
+        .addTo(map);
+    } else {
+      nativePlaceMarkerRef.current.setLngLat([nativePlace.lng, nativePlace.lat]);
+      const em = nativePlaceMarkerRef.current.getElement().querySelector('em');
+      if (em) em.textContent = nativePlace.label || '地图位置';
+    }
+  }, [nativePlace, provider, ready]);
+
+  useEffect(() => () => {
+    userMarkerRef.current?.remove();
+    nativePlaceMarkerRef.current?.remove();
+  }, []);
+
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
     if (!map.getSource('pick')) return;
@@ -925,6 +1003,7 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
           apiKey={amapKey} theme={theme} photos={photos} selectedId={selectedId}
           focus={focus} initialCenter={mapCenterRef.current} initialZoom={mapZoomRef.current}
           pickMode={pickMode} onPick={onPick} onPhotoOpen={onPhotoOpen}
+          userLocation={userLocation} nativePlace={nativePlace}
           onReady={(m) => { amapRef.current = m; window.__lumenAmap = m; }}
           onCursor={(c) => setCursor(c)} onZoom={(z) => setZoom(z)}
           onView={(v) => { amapLastViewRef.current = v; }}

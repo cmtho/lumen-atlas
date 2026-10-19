@@ -16,7 +16,7 @@ export default function AtlasView({
   profile, photos, places, filteredPlaces, people, personFilter, onPersonFilter, regions,
   selectedPlace, onSelectPlace, onClosePlace, onUpload, onOpenPhoto, onViewArchive,
   onProvinceClick, onCityClick, onDistrictClick, focus, setFocus, theme, onNotice, pickMode, onPick, active = true,
-  provider, setProvider, amapKey,
+  provider, setProvider, amapKey, userLocation, nativePlace,
 }) {
   const [q, setQ] = useState('');
   const peopleById = useMemo(() => personMap(people), [people]);
@@ -54,6 +54,8 @@ export default function AtlasView({
           provider={provider}
           setProvider={setProvider}
           amapKey={amapKey}
+          userLocation={userLocation}
+          nativePlace={nativePlace}
         />
       </div>
 

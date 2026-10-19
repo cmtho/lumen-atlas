@@ -12,8 +12,8 @@ android {
         applicationId = "asia.chemcraze.lumen.nativeapp"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 5
+        versionName = "1.3.1"
     }
 
     buildFeatures { compose = true }

@@ -1,5 +1,6 @@
 package asia.chemcraze.lumen.nativeapp
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -23,6 +24,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -131,7 +133,10 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import java.util.Locale
 
 private val Bg = Color(0xFF030811)
 private val Panel = Color(0xFF0A1725)
@@ -361,9 +366,19 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
     var showAdmin by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
+    var userLocation by remember { mutableStateOf<LocationFix?>(null) }
     val isStaff = data.account.role == "owner" || data.account.role == "admin"
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val tracker = remember { LocationTracker(context) { userLocation = it } }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.any { it }) tracker.start()
+    }
+    LaunchedEffect(Unit) {
+        if (tracker.hasPermission()) tracker.start()
+        else locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+    DisposableEffect(Unit) { onDispose { tracker.stop() } }
 
     fun refresh() {
         if (refreshing) return
@@ -405,7 +420,7 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
         ) { inner ->
             Box(Modifier.fillMaxSize().padding(inner)) {
                 when (tab) {
-                    0 -> GlobeScreen(data, onPhoto = { selectedPhoto = it }, onSearch = { showSearch = true })
+                    0 -> GlobeScreen(data, onPhoto = { selectedPhoto = it }, userLocation = userLocation)
                     1 -> ArchiveScreen(data, onPhoto = { selectedPhoto = it }, onRefresh = { refresh() })
                     2 -> UploadScreen(
                         onUploaded = { count ->
@@ -462,9 +477,12 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onSearch: () -> Unit) {
+private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, userLocation: LocationFix?) {
     val context = LocalContext.current
     val loading = remember { mutableStateOf(true) }
+    val pageReady = remember { mutableStateOf(false) }
+    var followed by remember { mutableStateOf(false) }
+    var showPlaceSearch by remember { mutableStateOf(false) }
     var provider by rememberSaveable { mutableStateOf("libre") }
     val latestData = rememberUpdatedState(data)
     val latestOnPhoto = rememberUpdatedState(onPhoto)
@@ -486,7 +504,7 @@ private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onSearch: () 
             settings.mediaPlaybackRequiresUserGesture = false
             settings.setSupportZoom(false)
             webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) { loading.value = false }
+                override fun onPageFinished(view: WebView?, url: String?) { loading.value = false; pageReady.value = true }
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val url = request?.url ?: return false
                     if (url.host == "lumen.chemcraze.asia") return false
@@ -500,8 +518,25 @@ private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onSearch: () 
 
     LaunchedEffect(provider) {
         loading.value = true
+        pageReady.value = false
+        followed = false
         Api.syncWebViewCookie()
-        webView.loadUrl("${Api.BASE}/?embed=map&provider=$provider&v=native2")
+        webView.loadUrl("${Api.BASE}/?embed=map&provider=$provider&v=native3")
+    }
+
+    LaunchedEffect(pageReady.value, userLocation, provider) {
+        val fix = userLocation ?: return@LaunchedEffect
+        if (!pageReady.value) return@LaunchedEffect
+        val lat = String.format(Locale.US, "%.7f", fix.lat)
+        val lng = String.format(Locale.US, "%.7f", fix.lng)
+        val heading = String.format(Locale.US, "%.1f", fix.heading)
+        val accuracy = String.format(Locale.US, "%.1f", fix.accuracy)
+        val fly = if (followed) "false" else "true"
+        webView.evaluateJavascript(
+            "window.__lumenNativeLocation&&window.__lumenNativeLocation($lat,$lng,$heading,$accuracy,$fly);",
+            null,
+        )
+        followed = true
     }
 
     DisposableEffect(Unit) {
@@ -537,8 +572,30 @@ private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onSearch: () 
                         Text(if (provider == "libre") "全球球体 / 原生客户端" else "高德中国底图 / 原生客户端", color = Soft, fontSize = 9.sp)
                     }
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = onSearch, modifier = Modifier.size(30.dp)) {
-                        Icon(Icons.Outlined.Search, "搜索", tint = Cyan, modifier = Modifier.size(17.dp))
+                    IconButton(
+                        onClick = {
+                            val fix = userLocation ?: return@IconButton
+                            val lat = String.format(Locale.US, "%.7f", fix.lat)
+                            val lng = String.format(Locale.US, "%.7f", fix.lng)
+                            val heading = String.format(Locale.US, "%.1f", fix.heading)
+                            val accuracy = String.format(Locale.US, "%.1f", fix.accuracy)
+                            webView.evaluateJavascript(
+                                "window.__lumenNativeLocation&&window.__lumenNativeLocation($lat,$lng,$heading,$accuracy,true);",
+                                null,
+                            )
+                            followed = true
+                        },
+                        modifier = Modifier.size(30.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.LocationOn,
+                            "回到当前位置",
+                            tint = if (userLocation == null) Soft else Cyan,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                    IconButton(onClick = { showPlaceSearch = true }, modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Outlined.Search, "搜索地图地点", tint = Cyan, modifier = Modifier.size(17.dp))
                     }
                     Text("${data.photos.size} 帧", color = Cyan, fontSize = 10.sp)
                 }
@@ -584,6 +641,115 @@ private fun GlobeScreen(data: Bootstrap, onPhoto: (Photo) -> Unit, onSearch: () 
 
         if (loading.value) {
             CircularProgressIndicator(color = Cyan, strokeWidth = 2.dp, modifier = Modifier.align(Alignment.Center).size(25.dp))
+        }
+    }
+
+    if (showPlaceSearch) {
+        PlaceSearchDialog(
+            onPlace = { place ->
+                val js = "window.__lumenNativePlace&&window.__lumenNativePlace(${JSONObject.quote(place.label)},${place.lat},${place.lng},12);"
+                webView.evaluateJavascript(js, null)
+                showPlaceSearch = false
+            },
+            onClose = { showPlaceSearch = false },
+        )
+    }
+}
+
+@Composable
+private fun PlaceSearchDialog(onPlace: (PlaceResult) -> Unit, onClose: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<PlaceResult>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(query) {
+        val term = query.trim()
+        if (term.length < 2) {
+            results = emptyList()
+            loading = false
+            return@LaunchedEffect
+        }
+        delay(450)
+        loading = true
+        error = null
+        try { results = Api.searchPlaces(term) }
+        catch (e: Exception) { error = e.message ?: "地点搜索失败" }
+        finally { loading = false }
+    }
+
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Bg)) {
+            Column(
+                Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onClose) { Icon(Icons.Outlined.ArrowBack, "返回", tint = Ink) }
+                    Column {
+                        Text("搜索地图地点", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Light)
+                        Text("高德 POI / 城市 / 地标 / 地址", color = Soft, fontSize = 9.sp)
+                    }
+                }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("例如：成都、西湖、敦煌", fontSize = 12.sp, color = Soft) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Cyan) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cyan,
+                        unfocusedBorderColor = Color.White.copy(alpha = .14f),
+                        focusedTextColor = Ink,
+                        unfocusedTextColor = Ink,
+                        focusedContainerColor = Color(0xFF06111D),
+                        unfocusedContainerColor = Color(0xFF06111D),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (loading) {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Cyan, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                    }
+                }
+                if (error != null) Text(error!!, color = Danger, fontSize = 11.sp)
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(results, key = { "${it.lat}-${it.lng}-${it.label}" }) { place ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                                .background(Color.White.copy(alpha = .045f))
+                                .border(1.dp, Color.White.copy(alpha = .09f), RoundedCornerShape(13.dp))
+                                .clickable { onPlace(place) }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.LocationOn, null, tint = Cyan, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(9.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(place.label, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(place.detail, color = Soft, fontSize = 9.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                            Text(place.source.uppercase(), color = Soft.copy(alpha = .7f), fontSize = 8.sp)
+                        }
+                    }
+                    if (!loading && query.trim().length >= 2 && results.isEmpty() && error == null) {
+                        item { Text("没有找到这个地点", color = Soft, fontSize = 11.sp, modifier = Modifier.padding(20.dp)) }
+                    }
+                    if (query.trim().length < 2) {
+                        item {
+                            GlassCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Outlined.LocationOn, null, tint = Cyan, modifier = Modifier.size(30.dp))
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("输入地点名开始搜索", color = Ink, fontSize = 12.sp)
+                                    Text("选中后地图会飞到该位置并显示金色图钉", color = Soft, fontSize = 9.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

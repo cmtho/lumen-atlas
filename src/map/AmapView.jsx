@@ -4,9 +4,34 @@ import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/coords.js';
 
 const inChina = (lng, lat) => lng > 72 && lng < 138 && lat > 17 && lat < 55;
 
+function makeUserMarkerElement() {
+  const el = document.createElement('div');
+  el.className = 'lumen-user-marker';
+  el.innerHTML = '<span class="lumen-user-pulse"></span><span class="lumen-user-arrow"></span>';
+  return el;
+}
+
+function paintUserMarker(el, location) {
+  const heading = Number(location?.heading);
+  el.style.setProperty('--bearing', `${Number.isFinite(heading) ? heading : 0}deg`);
+  const accuracy = Math.min(96, Math.max(34, Number(location?.accuracy) || 40));
+  el.style.setProperty('--accuracy', `${accuracy}px`);
+}
+
+function makePlaceMarkerElement(label) {
+  const el = document.createElement('div');
+  el.className = 'lumen-native-place';
+  const dot = document.createElement('span');
+  const text = document.createElement('em');
+  text.textContent = label || '地图位置';
+  el.append(dot, text);
+  return el;
+}
+
 export default function AmapView({
   apiKey, theme, photos, selectedId, focus, initialCenter, initialZoom,
   pickMode, onPick, onPhotoOpen, onReady, onCursor, onZoom, onView, onError,
+  userLocation = null, nativePlace = null,
 }) {
   const hostRef = useRef(null);
   const mapRef = useRef(null);
@@ -16,6 +41,8 @@ export default function AmapView({
   const markersRef = useRef([]);
   const markerNodesRef = useRef(new Map());
   const pickMarkerRef = useRef(null);
+  const userMarkerRef = useRef(null);
+  const nativePlaceMarkerRef = useRef(null);
   const [ready, setReady] = useState(false);
   const amapApiRef = useRef(null);
   const pickModeRef = useRef(pickMode);
@@ -144,6 +171,61 @@ export default function AmapView({
     const z = Math.max(6.5, Math.min(Number(focus.zoom) || 11, 18));
     map.setZoomAndCenter(z, [lng, lat], true);
   }, [focus?.ts, ready]);
+
+  // native user location marker
+  useEffect(() => {
+    const map = mapRef.current;
+    const AMap = amapApiRef.current;
+    if (!map || !AMap || !ready) return;
+    if (!userLocation) {
+      if (userMarkerRef.current) { try { map.remove(userMarkerRef.current); } catch {} userMarkerRef.current = null; }
+      return;
+    }
+    const [lng, lat] = wgs84ToGcj02(userLocation.lng, userLocation.lat);
+    if (!userMarkerRef.current) {
+      const el = makeUserMarkerElement();
+      userMarkerRef.current = new AMap.Marker({
+        position: [lng, lat], content: el, anchor: 'center', zIndex: 220, bubble: false,
+      });
+      userMarkerRef.current.setMap(map);
+    } else {
+      userMarkerRef.current.setPosition([lng, lat]);
+    }
+    paintUserMarker(userMarkerRef.current.getContent(), userLocation);
+  }, [userLocation, ready]);
+
+  // native place search pin
+  useEffect(() => {
+    const map = mapRef.current;
+    const AMap = amapApiRef.current;
+    if (!map || !AMap || !ready) return;
+    if (!nativePlace) {
+      if (nativePlaceMarkerRef.current) { try { map.remove(nativePlaceMarkerRef.current); } catch {} nativePlaceMarkerRef.current = null; }
+      return;
+    }
+    const [lng, lat] = wgs84ToGcj02(nativePlace.lng, nativePlace.lat);
+    if (!nativePlaceMarkerRef.current) {
+      const el = makePlaceMarkerElement(nativePlace.label);
+      nativePlaceMarkerRef.current = new AMap.Marker({
+        position: [lng, lat], content: el, anchor: 'bottom-center', zIndex: 210, bubble: false,
+      });
+      nativePlaceMarkerRef.current.setMap(map);
+    } else {
+      nativePlaceMarkerRef.current.setPosition([lng, lat]);
+      const em = nativePlaceMarkerRef.current.getContent()?.querySelector?.('em');
+      if (em) em.textContent = nativePlace.label || '地图位置';
+    }
+  }, [nativePlace, ready]);
+
+  useEffect(() => () => {
+    const map = mapRef.current;
+    if (map) {
+      if (userMarkerRef.current) { try { map.remove(userMarkerRef.current); } catch {} }
+      if (nativePlaceMarkerRef.current) { try { map.remove(nativePlaceMarkerRef.current); } catch {} }
+    }
+    userMarkerRef.current = null;
+    nativePlaceMarkerRef.current = null;
+  }, []);
 
   // photo markers
   useEffect(() => {

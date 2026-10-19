@@ -1754,3 +1754,44 @@ html.embed-map .map-scale,
 html.embed-map .map-admin-level { display: none !important; }
 html.embed-map .app-main { height: 100dvh; }
 html.embed-map .atlas-view { position: fixed; inset: 0; }
+
+/* native location arrow + searched place pin */
+.lumen-user-marker { position: relative; width: 34px; height: 34px; pointer-events: none; }
+.lumen-user-pulse {
+  position: absolute; left: 50%; top: 50%; width: var(--accuracy, 40px); height: var(--accuracy, 40px);
+  transform: translate(-50%, -50%); border-radius: 50%;
+  background: rgba(101, 244, 255, .09); border: 1px solid rgba(101, 244, 255, .3);
+  animation: lumen-user-pulse 2.2s ease-out infinite;
+}
+.lumen-user-arrow {
+  position: absolute; left: 50%; top: 50%; width: 19px; height: 19px;
+  transform: translate(-50%, -50%) rotate(var(--bearing, 0deg));
+  border-radius: 50%; background: #65f4ff;
+  border: 2px solid #031018; box-shadow: 0 0 0 3px rgba(101, 244, 255, .16), 0 0 18px rgba(101, 244, 255, .7);
+}
+.lumen-user-arrow::after {
+  content: ''; position: absolute; left: 50%; top: -8px; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid #65f4ff;
+  filter: drop-shadow(0 0 4px rgba(101, 244, 255, .7));
+}
+.lumen-native-place { position: relative; display: flex; flex-direction: column; align-items: center; transform: translateY(-2px); pointer-events: none; }
+.lumen-native-place > span {
+  width: 15px; height: 15px; border-radius: 50%; background: #ffcf70;
+  border: 3px solid #031018; box-shadow: 0 0 0 3px rgba(255, 207, 112, .18), 0 0 16px rgba(255, 207, 112, .55);
+}
+.lumen-native-place > span::after {
+  content: ''; position: absolute; left: 50%; top: 15px; transform: translateX(-50%);
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 9px solid #ffcf70;
+}
+.lumen-native-place em {
+  margin-top: 13px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 3px 8px; border-radius: 7px; background: rgba(3, 8, 17, .82);
+  border: 1px solid rgba(255, 207, 112, .28); color: #ffdfa1; font-style: normal;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .02em;
+}
+@keyframes lumen-user-pulse {
+  0% { transform: translate(-50%, -50%) scale(.35); opacity: .85; }
+  70% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
+}
+html.embed-map .lumen-user-marker { pointer-events: none; }
