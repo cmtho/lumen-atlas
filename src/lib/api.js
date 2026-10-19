@@ -36,6 +36,7 @@ export const api = {
   updatePerson: (id, data) => request(`/api/people/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deletePerson: (id) => request(`/api/people/${id}`, { method: 'DELETE' }),
   updatePhoto: (id, data) => request(`/api/photos/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  bulkUpdatePhotos: (ids, patch) => request('/api/photos/bulk', { method: 'POST', body: JSON.stringify({ ids, patch }) }),
   deletePhoto: (id) => request(`/api/photos/${id}`, { method: 'DELETE' }),
   reverse: (lat, lng) => request(`/api/geocode/reverse?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`),
   searchPlaces: (q) => request(`/api/geocode/search?q=${encodeURIComponent(q)}`),

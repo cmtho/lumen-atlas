@@ -855,6 +855,60 @@ app.post('/api/photos', upload.array('files', 30), async (req, res, next) => {
   }
 });
 
+app.post('/api/photos/bulk', async (req, res) => {
+  const rawIds = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+  const ids = [...new Set(rawIds)];
+  const patch = req.body?.patch && typeof req.body.patch === 'object' ? req.body.patch : {};
+  if (!ids.length) return res.status(400).json({ error: '请选择至少一张照片' });
+  if (ids.length > 200) return res.status(400).json({ error: '一次最多批量修改 200 张照片' });
+  if (['capturedAt', 'capturedLocal', 'lat', 'lng'].some(key => key in patch)) {
+    return res.status(400).json({ error: '批量修改不允许修改拍摄时间或坐标' });
+  }
+  const tagsMode = patch.tagsMode || 'replace';
+  const personIdsMode = patch.personIdsMode || 'replace';
+  if (!['add', 'remove', 'replace'].includes(tagsMode)) return res.status(400).json({ error: '标签模式不合法' });
+  if (!['add', 'remove', 'replace'].includes(personIdsMode)) return res.status(400).json({ error: '人物模式不合法' });
+  if ('tags' in patch && !Array.isArray(patch.tags)) return res.status(400).json({ error: 'tags 必须是数组' });
+  if ('personIds' in patch && !Array.isArray(patch.personIds)) return res.status(400).json({ error: 'personIds 必须是数组' });
+  const people = Array.isArray(patch.personIds) ? patch.personIds.map(String) : [];
+  const locationKeys = ['province', 'city', 'district', 'locationName'];
+  const textKeys = [...locationKeys, 'camera', 'lens'];
+  const result = await mutate(db => {
+    const ownPeople = new Set(db.people.filter(p => p.userId === req.user.id).map(p => p.id));
+    if (people.some(id => !ownPeople.has(id))) return { error: '人物不属于当前用户' };
+    const photos = ids.map(id => db.photos.find(p => p.id === id && p.userId === req.user.id));
+    if (photos.some(p => !p)) return { error: '照片不存在或无权操作' };
+    const nextTags = Array.isArray(patch.tags)
+      ? [...new Set(patch.tags.map(t => safeText(t, 24)).filter(Boolean))].slice(0, 12)
+      : null;
+    const nextPeople = [...new Set(people)].slice(0, 100);
+    for (const photo of photos) {
+      if (nextTags) {
+        const current = Array.isArray(photo.tags) ? photo.tags : [];
+        if (tagsMode === 'add') photo.tags = [...new Set([...current, ...nextTags])].slice(0, 12);
+        else if (tagsMode === 'remove') photo.tags = current.filter(tag => !nextTags.includes(tag));
+        else photo.tags = nextTags;
+      }
+      if (Array.isArray(patch.personIds)) {
+        const current = Array.isArray(photo.personIds) ? photo.personIds : [];
+        if (personIdsMode === 'add') photo.personIds = [...new Set([...current, ...nextPeople])];
+        else if (personIdsMode === 'remove') photo.personIds = current.filter(id => !nextPeople.includes(id));
+        else photo.personIds = nextPeople;
+      }
+      for (const key of textKeys) {
+        if (!(key in patch)) continue;
+        const max = key === 'locationName' ? 160 : (key === 'camera' || key === 'lens' ? 100 : 60);
+        photo[key] = safeText(patch[key], max);
+      }
+      photo.updatedAt = new Date().toISOString();
+    }
+    if (locationKeys.some(key => key in patch)) syncAutoTracks(db, req.user.id);
+    return { updated: photos.length, photos };
+  });
+  if (result?.error) return res.status(400).json({ error: result.error });
+  res.json(result);
+});
+
 app.patch('/api/photos/:id', async (req, res) => {
   const result = await mutate(db => {
     const photo = db.photos.find(p => p.id === req.params.id && p.userId === req.user.id);

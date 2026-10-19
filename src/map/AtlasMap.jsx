@@ -229,6 +229,8 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
   const lastHoverCalcRef = useRef(0);
   const userMarkerRef = useRef(null);
   const nativePlaceMarkerRef = useRef(null);
+  const trackAnimRef = useRef(0);
+  const trackAnimatingRef = useRef(false);
 
   dataRef.current = { photos, selectedId, tracks };
   callbacksRef.current = { onPhotoOpen, onProvinceClick, onCityClick, onDistrictClick, onNotice, onPick };
@@ -237,15 +239,64 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
   regionsRef.current = regions;
   providerRef.current = provider;
 
-  function updateData(map) {
+  function updatePhotos(map) {
     if (!map?.getSource('photos')) return;
-    const { photos: list, selectedId: sid, tracks: trackList } = dataRef.current;
+    const list = dataRef.current.photos;
     map.getSource('photos')?.setData(photoData(list));
     map.getSource('journey')?.setData(journeyData(list));
-    map.getSource('tracks')?.setData(trackData(trackList));
-    if (map.getLayer('photo-point-active')) {
-      map.setFilter('photo-point-active', ['==', ['get', 'id'], sid || '__none__']);
+  }
+
+  function updateTracks(map) {
+    if (!map?.getSource('tracks')) return;
+    map.getSource('tracks')?.setData(trackData(dataRef.current.tracks));
+  }
+
+  function updateSelection(map) {
+    if (!map?.getLayer('photo-point-active')) return;
+    map.setFilter('photo-point-active', ['==', ['get', 'id'], dataRef.current.selectedId || '__none__']);
+  }
+
+  function animateTrackDraw(map, trackId) {
+    if (!map || !trackId || trackAnimatingRef.current) return;
+    const source = map.getSource('tracks');
+    if (!source) return;
+    const baseFeatures = trackData(dataRef.current.tracks).features;
+    const selected = baseFeatures.find(feature => feature.properties?.id === trackId);
+    if (!selected) return;
+    cancelAnimationFrame(trackAnimRef.current);
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      source.setData(trackData(dataRef.current.tracks));
+      return;
     }
+    const coords = selected.geometry?.coordinates || [];
+    if (coords.length < 2) return;
+    trackAnimatingRef.current = true;
+    map.getCanvas().style.cursor = 'default';
+    const duration = 900;
+    const start = performance.now();
+    const frame = (now) => {
+      if (!map.getSource('tracks')) {
+        trackAnimatingRef.current = false;
+        return;
+      }
+      const progress = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const count = Math.max(2, Math.ceil(coords.length * eased));
+      const partial = {
+        ...selected,
+        geometry: { ...selected.geometry, coordinates: coords.slice(0, count) },
+      };
+      const features = baseFeatures.map(feature => feature.properties?.id === trackId ? partial : feature);
+      map.getSource('tracks')?.setData({ type: 'FeatureCollection', features });
+      if (progress < 1) {
+        trackAnimRef.current = requestAnimationFrame(frame);
+      } else {
+        map.getSource('tracks')?.setData(trackData(dataRef.current.tracks));
+        trackAnimatingRef.current = false;
+      }
+    };
+    trackAnimRef.current = requestAnimationFrame(frame);
   }
 
   function applyDistrictData(map, adcode, data) {
@@ -693,7 +744,9 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
     }
 
     updateAmapPoiSource(map, amapPoiDataRef.current.features.map(f => f.properties));
-    updateData(map);
+    updatePhotos(map);
+    updateTracks(map);
+    updateSelection(map);
   }
 
   useEffect(() => {
@@ -768,7 +821,7 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
       if (pickRef.current.pickMode) { map.getCanvas().style.cursor = 'crosshair'; return; }
       let hits = [];
       try {
-        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
+        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster', 'track-line', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
       } catch {}
       map.getCanvas().style.cursor = hits.length ? 'pointer' : '';
 
@@ -840,9 +893,15 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
       }
       let hits = [];
       try {
-        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
+        hits = map.queryRenderedFeatures(e.point, { layers: ['photo-point', 'photo-cluster', 'track-line', 'amap-poi-dot', 'amap-poi-label', 'china-district-fill', 'china-city-fill', 'province-fill'].filter(id => map.getLayer(id)) });
       } catch {}
       if (!hits.length) return;
+      const trackHit = hits.find(h => h.layer.id === 'track-line');
+      if (trackHit) {
+        if (trackAnimatingRef.current) return;
+        animateTrackDraw(map, trackHit.properties?.id);
+        return;
+      }
       const cluster = hits.find(h => h.layer.id === 'photo-cluster');
       if (cluster) {
         const src = map.getSource('photos');
@@ -870,6 +929,8 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
     });
     return () => {
       disposed = true;
+      cancelAnimationFrame(trackAnimRef.current);
+      trackAnimatingRef.current = false;
       map.remove();
       mapRef.current = null;
     };
@@ -902,8 +963,20 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    updateData(map);
-  }, [photos, selectedId, tracks, ready]);
+    updatePhotos(map);
+  }, [photos, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    updateTracks(map);
+  }, [tracks, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    updateSelection(map);
+  }, [selectedId, ready]);
 
   useEffect(() => {
     const map = mapRef.current;

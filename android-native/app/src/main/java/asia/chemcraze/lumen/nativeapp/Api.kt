@@ -37,6 +37,8 @@ data class Photo(
     val thumb: String,
     val image: String,
     val capturedAt: String,
+    val capturedLocal: String,
+    val notes: String,
     val country: String,
     val province: String,
     val city: String,
@@ -55,7 +57,7 @@ data class Photo(
             .ifBlank { "未命名坐标" }
 }
 
-data class Person(val id: String, val name: String, val color: String)
+data class Person(val id: String, val name: String, val color: String, val note: String = "")
 
 data class Invite(
     val id: String,
@@ -211,7 +213,7 @@ object Api {
             photos = (0 until photos.length()).map { photos.getJSONObject(it).toPhoto() },
             people = (0 until people.length()).map {
                 val p = people.getJSONObject(it)
-                Person(p.optString("id"), p.optString("name"), p.optString("color", "#65f4ff"))
+                Person(p.optString("id"), p.optString("name"), p.optString("color", "#65f4ff"), p.optString("note"))
             },
             invites = (0 until invites.length()).map { invites.getJSONObject(it).toInvite() },
             siteName = site?.optString("siteName")?.takeIf { it.isNotBlank() } ?: "LUMEN ATLAS",
@@ -229,6 +231,8 @@ object Api {
             thumb = optString("thumb").absolute(),
             image = optString("image").absolute(),
             capturedAt = optString("capturedAt"),
+            capturedLocal = optString("capturedLocal"),
+            notes = optString("notes"),
             country = optString("country"),
             province = optString("province"),
             city = optString("city"),
@@ -263,6 +267,33 @@ object Api {
                 .patch(body.toString().toRequestBody("application/json".toMediaType()))
                 .build()
         )
+    }
+
+    suspend fun updatePhoto(id: String, patch: JSONObject): Photo {
+        val text = patchJson("/api/photos/$id", patch)
+        return JSONObject(text).getJSONObject("photo").toPhoto()
+    }
+
+    suspend fun createPerson(name: String, color: String, note: String): Person {
+        val body = JSONObject().put("name", name).put("color", color).put("note", note)
+        val text = execute(
+            Request.Builder().url("$BASE/api/people")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+        )
+        val p = JSONObject(text).getJSONObject("person")
+        return Person(p.optString("id"), p.optString("name"), p.optString("color", "#65f4ff"), p.optString("note"))
+    }
+
+    suspend fun updatePerson(id: String, name: String, color: String, note: String): Person {
+        val body = JSONObject().put("name", name).put("color", color).put("note", note)
+        val text = patchJson("/api/people/$id", body)
+        val p = JSONObject(text).getJSONObject("person")
+        return Person(p.optString("id"), p.optString("name"), p.optString("color", "#65f4ff"), p.optString("note"))
+    }
+
+    suspend fun deletePerson(id: String) {
+        execute(Request.Builder().url("$BASE/api/people/$id").delete().build())
     }
 
     suspend fun updateProfile(name: String, handle: String, bio: String, home: String, avatarColor: String? = null): Profile {

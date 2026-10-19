@@ -158,10 +158,10 @@ npm start
 
 个人使用的原生安装包已经构建：
 
-- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v9.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v9.apk)
+- **原生 Android UI**：[LUMEN-ATLAS-Native-20261019-v10.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Native-20261019-v10.apk)
 - **轻量 TWA 版**：[LUMEN-ATLAS-Android-20261018.apk](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Android-20261018.apk)
 - **Windows 便携版**：[LUMEN-ATLAS-Windows-20261018.zip](https://cmtho.chemcraze.asia/uploads/LUMEN-ATLAS-Windows-20261018.zip)
-- **校验和**：[SHA256SUMS-APPS-20261018.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261018.txt)
+- **校验和**：[SHA256SUMS-APPS-20261019.txt](https://cmtho.chemcraze.asia/uploads/SHA256SUMS-APPS-20261019.txt)
 
 ### Android 原生 UI 版
 
@@ -177,7 +177,9 @@ npm start
 - 地图顶部搜索高德 POI / 城市 / 地标，选中后飞过去并显示金色圆点
 - 地图底部有最近影像轮播，点击打开悬浮液态玻璃大图；地图标记点击直接走原生大图
 - 悬浮液态玻璃图片查看器：背景虚化、渐变玻璃卡、圆角浮层
-- 档案页支持标题 / 地点 / 标签搜索，以及按旅人筛选
+- 档案页支持标题 / 地点 / 标签搜索、旅人筛选、分页加载和批量编辑
+- 照片详情支持编辑标题、拍摄时间、地点、人物、标签和备注
+- 我的页可新建、编辑、删除旅人；删除只解除照片关联
 - 地图顶部搜索入口，可搜索影像、地点、人物、标签
 - 原生邀请码：生成、设置有效期 / 次数、复制链接、撤销
 - 原生个人编辑：名称、handle、简介、所在城市

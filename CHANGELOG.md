@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-19 — 档案性能、分页、批量编辑与动效
+
+### Added
+
+- 档案页分页加载：首屏 60 张，底部哨兵每次追加 60 张，保留“加载更多”兜底和“已显示全部”提示。
+- 批量修改照片档案接口 `POST /api/photos/bulk`：标签/人物增删改、地点/相机字段更新、200 张上限、整批原子校验。
+- Web 档案页多选模式：全选基于完整筛选结果，支持 Shift 区间选择、批量加人物/标签/地点/删除。
+- 视图切换、PhotoModal、轨迹绘制和数字滚动动效；列表入场只对首屏前 12 张生效。
+- 原生 Android 1.6.0：照片编辑 sheet、旅人新建/编辑/删除 sheet、Person.note 解析和本地时间换算。
+
+### Changed
+
+- 档案图片改用缩略图；Modal 与滚动列表移除大面积 backdrop-filter。
+- AtlasMap 的 photos / tracks / selectedId 数据更新拆分为独立 effect。
+- 批量更新按 200 张分片提交，单请求仍保持原子性。
+- 原生 APK 版本提升到 versionCode 8 / versionName 1.6.0。
+
+### Compatibility
+
+- 不新增依赖；单张照片 PATCH、筛选逻辑和 WebView 地图逻辑保持不变。
+- 旧照片/旅人数据无需迁移；没有 `thumb` 时仍回退到原图。
+
 本文件记录 LUMEN ATLAS 的主要功能、修复和兼容性变化。
 
 ## 2026-10-19 — 自定义轨迹

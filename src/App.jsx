@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import Header, { MobileNav } from './components/Header.jsx';
 import AtlasView from './components/AtlasView.jsx';
@@ -68,6 +68,9 @@ export default function App() {
   const [pickMode, setPickMode] = useState(false);
   const [pickResult, setPickResult] = useState(null);
   const [photoId, setPhotoId] = useState(null);
+  const [photoClosing, setPhotoClosing] = useState(false);
+  const mainRef = useRef(null);
+  const seenViewsRef = useRef(null);
   const [personModal, setPersonModal] = useState({ open: false, person: null });
   const [profileModal, setProfileModal] = useState(false);
   const [passwordModal, setPasswordModal] = useState(false);
@@ -164,7 +167,11 @@ export default function App() {
   const refreshTracks = useCallback(async () => {
     try {
       const res = await api.tracks();
-      setData(prev => (prev ? { ...prev, tracks: res.tracks } : prev));
+      setData(prev => {
+        if (!prev) return prev;
+        if (JSON.stringify(prev.tracks || []) === JSON.stringify(res.tracks || [])) return prev;
+        return { ...prev, tracks: res.tracks };
+      });
     } catch {}
   }, []);
 
@@ -182,6 +189,23 @@ export default function App() {
   const updatePhoto = (photo) => setData(prev => ({ ...prev, photos: prev.photos.map(p => p.id === photo.id ? photo : p) }));
   const setPhotos = (updater) => setData(prev => ({ ...prev, photos: typeof updater === 'function' ? updater(prev.photos) : updater }));
 
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return undefined;
+    if (seenViewsRef.current === null) {
+      seenViewsRef.current = new Set([view]);
+      return undefined;
+    }
+    if (seenViewsRef.current.has(view)) return undefined;
+    seenViewsRef.current.add(view);
+    main.classList.add('view-enter');
+    const timer = setTimeout(() => main.classList.remove('view-enter'), 280);
+    return () => {
+      clearTimeout(timer);
+      main.classList.remove('view-enter');
+    };
+  }, [view]);
+
   const openArchive = useCallback((opts = {}) => {
     setArchiveFilter({ ...EMPTY_FILTER, personId: opts.personId || '', placeKey: opts.placeKey || '', province: opts.province || '' });
     setView('archive');
@@ -193,8 +217,17 @@ export default function App() {
       window.LumenBridge.openPhoto(String(id));
       return;
     }
+    setPhotoClosing(false);
     setPhotoId(id);
   };
+
+  const closePhoto = useCallback(() => {
+    setPhotoClosing(true);
+    setTimeout(() => {
+      setPhotoId(null);
+      setPhotoClosing(false);
+    }, 120);
+  }, []);
 
   const handleProvinceClick = (name) => {
     const candidates = places.filter(p => p.province === name || p.country === name);
@@ -319,6 +352,44 @@ export default function App() {
     refreshTracks();
     notice('影像已从星图中移除');
   };
+
+  const handleBulkUpdate = useCallback(async (ids, patch) => {
+    const unique = [...new Set(ids)];
+    let updated = 0;
+    const changed = [];
+    try {
+      for (let i = 0; i < unique.length; i += 200) {
+        const res = await api.bulkUpdatePhotos(unique.slice(i, i + 200), patch);
+        updated += res.updated;
+        changed.push(...res.photos);
+        const byId = new Map(res.photos.map(photo => [photo.id, photo]));
+        setPhotos(prev => prev.map(photo => byId.get(photo.id) || photo));
+      }
+      return { updated, photos: changed };
+    } finally {
+      refreshTracks();
+    }
+  }, [refreshTracks]);
+
+  const handleBulkDelete = useCallback(async (ids, onProgress) => {
+    const deleted = [];
+    const failures = [];
+    for (let i = 0; i < ids.length; i += 1) {
+      try {
+        await api.deletePhoto(ids[i]);
+        deleted.push(ids[i]);
+      } catch (error) {
+        failures.push({ id: ids[i], error: error.message });
+      }
+      onProgress?.({ done: i + 1, total: ids.length });
+    }
+    if (deleted.length) {
+      const removed = new Set(deleted);
+      setPhotos(prev => prev.filter(photo => !removed.has(photo.id)));
+    }
+    await refreshTracks();
+    return { deleted, failures };
+  }, [refreshTracks]);
 
   const handleCreatePerson = async (payload) => {
     const res = await api.addPerson(payload);
@@ -446,7 +517,7 @@ export default function App() {
         onSearch={() => setSearchOpen(true)} isStaff={isStaff} site={data.site}
       />}
 
-      <main className="app-main">
+      <main ref={mainRef} className="app-main">
         {!EMBED_TRACKS && (
           <AtlasView
             active={view === 'atlas'}
@@ -469,6 +540,8 @@ export default function App() {
             onOpenPhoto={openPhoto} onUpload={() => openUpload()}
             onClearFilter={() => setArchiveFilter(EMPTY_FILTER)}
             onPersonFilter={(id) => setArchiveFilter(prev => ({ ...prev, personId: id || '' }))}
+            regions={regions} onNotice={notice}
+            onBulkUpdate={handleBulkUpdate} onBulkDelete={handleBulkDelete}
           />
         )}
         {view === 'tracks' && (
@@ -524,8 +597,8 @@ export default function App() {
       />
 
       <PhotoModal
-        open={!!selectedPhoto} photo={selectedPhoto} people={people} regions={regions}
-        onClose={() => setPhotoId(null)} onSave={handleSavePhoto} onDelete={handleDeletePhoto}
+        open={!!selectedPhoto && !photoClosing} photo={selectedPhoto} people={people} regions={regions}
+        onClose={closePhoto} onSave={handleSavePhoto} onDelete={handleDeletePhoto}
         onNotice={notice}
       />
 

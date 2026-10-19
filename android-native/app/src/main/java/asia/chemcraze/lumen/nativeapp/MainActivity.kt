@@ -2,6 +2,8 @@ package asia.chemcraze.lumen.nativeapp
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -59,7 +61,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -78,6 +83,9 @@ import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -137,7 +145,11 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import org.json.JSONArray
+import java.util.Calendar
 import java.util.Locale
+import java.util.TimeZone
+import java.text.SimpleDateFormat
 
 private val Bg = Color(0xFF030811)
 private val Panel = Color(0xFF0A1725)
@@ -362,6 +374,9 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
     var data by remember { mutableStateOf(initial) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var selectedPhoto by remember { mutableStateOf<Photo?>(null) }
+    var editingPhoto by remember { mutableStateOf<Photo?>(null) }
+    var personSheet by remember { mutableStateOf<Person?>(null) }
+    var personSheetNew by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var showInvites by remember { mutableStateOf(false) }
     var showAdmin by remember { mutableStateOf(false) }
@@ -441,6 +456,8 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
                         onOpenWeb = {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Api.BASE)))
                         },
+                        onAddPerson = { personSheetNew = true; personSheet = Person("", "", "#65f4ff") },
+                        onEditPerson = { personSheetNew = false; personSheet = it },
                         onLogout = onLogout,
                     )
                 }
@@ -449,7 +466,35 @@ private fun MainScreen(initial: Bootstrap, onLogout: () -> Unit, onUpdated: (Boo
     }
 
     selectedPhoto?.let { photo ->
-        PhotoDialog(photo = photo, onClose = { selectedPhoto = null })
+        PhotoDialog(
+            photo = photo,
+            people = data.people,
+            onClose = { selectedPhoto = null },
+            onEdit = { editingPhoto = photo },
+        )
+    }
+    editingPhoto?.let { photo ->
+        NpPhotoEditSheet(
+            photo = photo,
+            people = data.people,
+            onDismiss = { editingPhoto = null },
+            onSaved = { updated ->
+                editingPhoto = null
+                selectedPhoto = updated
+                refresh()
+            },
+        )
+    }
+    personSheet?.let { person ->
+        NpPersonSheet(
+            initial = person,
+            isNew = personSheetNew,
+            onDismiss = { personSheet = null },
+            onChanged = {
+                personSheet = null
+                refresh()
+            },
+        )
     }
     if (showSearch) {
         SearchDialog(data = data, onPhoto = { selectedPhoto = it; showSearch = false }, onClose = { showSearch = false })
@@ -941,6 +986,7 @@ private fun PhotoCard(photo: Photo, onClick: () -> Unit) {
         Column(Modifier.align(Alignment.BottomStart).padding(10.dp)) {
             Text(photo.title, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(photo.place, color = Soft, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(photo.capturedLocal.take(16).replace('T', ' ').ifBlank { photo.capturedAt.take(10) }, color = Soft.copy(alpha = .7f), fontSize = 7.sp)
         }
     }
 }
@@ -1123,7 +1169,7 @@ private fun UploadScreen(onUploaded: (Int) -> Unit) {
 }
 
 @Composable
-private fun ProfileScreen(data: Bootstrap, isStaff: Boolean, onRefresh: () -> Unit, onEdit: () -> Unit, onInvites: () -> Unit, onAdmin: () -> Unit, onOpenWeb: () -> Unit, onLogout: () -> Unit) {
+private fun ProfileScreen(data: Bootstrap, isStaff: Boolean, onRefresh: () -> Unit, onEdit: () -> Unit, onInvites: () -> Unit, onAdmin: () -> Unit, onOpenWeb: () -> Unit, onAddPerson: () -> Unit, onEditPerson: (Person) -> Unit, onLogout: () -> Unit) {
     val profile = data.profile
     val countries = data.photos.map { it.country }.filter { it.isNotBlank() }.distinct().size
     Column(
@@ -1166,6 +1212,7 @@ private fun ProfileScreen(data: Bootstrap, isStaff: Boolean, onRefresh: () -> Un
             StatCard("${data.people.size}", "旅人", Modifier.weight(1f))
             StatCard("$countries", "国家", Modifier.weight(1f))
         }
+        NpPeopleSection(people = data.people, onAdd = onAddPerson, onEdit = onEditPerson)
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1800,7 +1847,7 @@ private fun StatCard(value: String, label: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun PhotoDialog(photo: Photo, onClose: () -> Unit) {
+private fun PhotoDialog(photo: Photo, people: List<Person>, onClose: () -> Unit, onEdit: () -> Unit) {
     val view = LocalView.current
     SideEffect {
         val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
@@ -1869,6 +1916,14 @@ private fun PhotoDialog(photo: Photo, onClose: () -> Unit) {
                         Text("FLUID FRAME / 悬浮影像", color = Color.White.copy(alpha = .75f), fontSize = 8.sp, letterSpacing = 1.sp)
                         Spacer(Modifier.weight(1f))
                         IconButton(
+                            onClick = onEdit,
+                            modifier = Modifier.size(32.dp).background(Color.Black.copy(alpha = .38f), CircleShape)
+                                .border(1.dp, Color.White.copy(alpha = .18f), CircleShape),
+                        ) {
+                            Icon(Icons.Outlined.Edit, "编辑", tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(Modifier.width(7.dp))
+                        IconButton(
                             onClick = onClose,
                             modifier = Modifier.size(32.dp).background(Color.Black.copy(alpha = .38f), CircleShape)
                                 .border(1.dp, Color.White.copy(alpha = .18f), CircleShape),
@@ -1894,9 +1949,13 @@ private fun PhotoDialog(photo: Photo, onClose: () -> Unit) {
                 Column(Modifier.padding(horizontal = 9.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(photo.title, color = Ink, fontSize = 21.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        Text(photo.capturedAt.take(10), color = Soft.copy(alpha = .85f), fontSize = 9.sp)
+                        Text(photo.capturedLocal.take(16).replace('T', ' ').ifBlank { photo.capturedAt.take(10) }, color = Soft.copy(alpha = .85f), fontSize = 9.sp)
                     }
                     Text(photo.place, color = Cyan.copy(alpha = .85f), fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    val peopleIn = photo.personIds.mapNotNull { id -> people.firstOrNull { it.id == id } }
+                    if (peopleIn.isNotEmpty()) {
+                        Text("旅人 · " + peopleIn.joinToString(" / ") { it.name }, color = Violet.copy(alpha = .9f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
@@ -1911,4 +1970,361 @@ private fun GlassCard(modifier: Modifier = Modifier, content: @Composable () -> 
         shape = RoundedCornerShape(22.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = .11f)),
     ) { content() }
+}
+
+/* ---------- native people management and photo editing sheets ---------- */
+
+@Composable
+private fun NpPeopleSection(people: List<Person>, onAdd: () -> Unit, onEdit: (Person) -> Unit) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("旅人", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                    Text("${people.size} 位旅人 · 长按或点编辑管理", color = Soft, fontSize = 9.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onAdd) { Icon(Icons.Outlined.Add, "新建旅人", tint = Cyan) }
+            }
+            if (people.isEmpty()) {
+                Text("还没有旅人，点右上角＋添加。", color = Soft, fontSize = 11.sp)
+            } else {
+                people.forEach { person ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                            .background(Color.White.copy(alpha = .045f))
+                            .clickable { onEdit(person) }
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(parseHex(person.color)), contentAlignment = Alignment.Center) {
+                            Text(person.name.take(1), color = Color(0xFF031018), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(person.name, color = Ink, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            if (person.note.isNotBlank()) Text(person.note, color = Soft, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Icon(Icons.Outlined.Edit, "编辑旅人", tint = Soft, modifier = Modifier.size(15.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NpPersonSheet(
+    initial: Person,
+    isNew: Boolean,
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit,
+) {
+    var name by remember(initial.id, isNew) { mutableStateOf(initial.name) }
+    var color by remember(initial.id, isNew) { mutableStateOf(initial.color) }
+    var note by remember(initial.id, isNew) { mutableStateOf(initial.note) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val palette = listOf("#65f4ff", "#9c8cff", "#ffcf70", "#ff8ea8", "#7ef0b2", "#ffa86b")
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Panel,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().imePadding().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (isNew) "新建旅人" else "编辑旅人", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Light)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "关闭", tint = Soft) }
+            }
+            NpInput(name, { name = it }, "姓名")
+            Text("颜色", color = Soft, fontSize = 10.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                palette.forEach { hex ->
+                    Box(
+                        Modifier.size(30.dp).clip(CircleShape).background(parseHex(hex))
+                            .border(if (color == hex) 2.dp else 1.dp, if (color == hex) Color.White else Color.White.copy(alpha = .25f), CircleShape)
+                            .clickable { color = hex },
+                    )
+                }
+            }
+            NpInput(note, { note = it }, "备注")
+            if (error != null) Text(error!!, color = Danger, fontSize = 11.sp)
+            Button(
+                onClick = {
+                    if (name.trim().isBlank()) { error = "请输入姓名"; return@Button }
+                    busy = true; error = null
+                    scope.launch {
+                        try {
+                            if (isNew) Api.createPerson(name.trim(), color, note.trim())
+                            else Api.updatePerson(initial.id, name.trim(), color, note.trim())
+                            onChanged()
+                        } catch (e: Exception) {
+                            error = e.message ?: "保存失败，请检查网络"
+                        } finally { busy = false }
+                    }
+                },
+                enabled = !busy,
+                colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF031018)),
+                shape = RoundedCornerShape(13.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) {
+                if (busy) CircularProgressIndicator(Modifier.size(19.dp), color = Color(0xFF031018), strokeWidth = 2.dp)
+                else Text(if (isNew) "创建旅人" else "保存修改", fontWeight = FontWeight.Bold)
+            }
+            if (!isNew) {
+                TextButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Delete, null, tint = Danger, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("删除旅人", color = Danger, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = Panel,
+            title = { Text("删除「${initial.name}」？", color = Ink) },
+            text = { Text("该旅人的照片不会被删除，只会解除关联。", color = Soft, fontSize = 12.sp) },
+            confirmButton = {
+                TextButton(onClick = {
+                    busy = true; error = null
+                    scope.launch {
+                        try { Api.deletePerson(initial.id); onChanged() }
+                        catch (e: Exception) { error = e.message ?: "删除失败"; confirmDelete = false }
+                        finally { busy = false }
+                    }
+                }, enabled = !busy) { Text("确认删除", color = Danger) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消", color = Soft) } },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NpPhotoEditSheet(
+    photo: Photo,
+    people: List<Person>,
+    onDismiss: () -> Unit,
+    onSaved: (Photo) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val initialWall = remember(photo.id) { npWallParts(photo) }
+    var date by remember(photo.id) { mutableStateOf(initialWall.first) }
+    var time by remember(photo.id) { mutableStateOf(initialWall.second) }
+    var title by remember(photo.id) { mutableStateOf(photo.title) }
+    var country by remember(photo.id) { mutableStateOf(photo.country) }
+    var province by remember(photo.id) { mutableStateOf(photo.province) }
+    var city by remember(photo.id) { mutableStateOf(photo.city) }
+    var district by remember(photo.id) { mutableStateOf(photo.district) }
+    var locationName by remember(photo.id) { mutableStateOf(photo.locationName) }
+    var note by remember(photo.id) { mutableStateOf(photo.notes) }
+    var selectedPeople by remember(photo.id) { mutableStateOf(photo.personIds.toSet()) }
+    var tags by remember(photo.id) { mutableStateOf(photo.tags.toList()) }
+    var tagInput by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val palette = listOf("#65f4ff", "#9c8cff", "#ffcf70", "#ff8ea8", "#7ef0b2", "#ffa86b")
+
+    fun addTag() {
+        val value = tagInput.trim()
+        if (value.isNotBlank() && tags.none { it.equals(value, ignoreCase = true) }) tags = tags + value
+        tagInput = ""
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Panel) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().imePadding().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("编辑照片档案", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Light)
+                    Text("留空的字段不会修改", color = Soft, fontSize = 9.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "关闭", tint = Soft) }
+            }
+            NpInput(title, { title = it }, "标题")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    val c = Calendar.getInstance()
+                    runCatching { c.time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(date)!! }
+                    android.app.DatePickerDialog(context, { _, y, m, d ->
+                        date = String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d)
+                    }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
+                }, shape = RoundedCornerShape(11.dp), modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.DateRange, null, tint = Cyan, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(5.dp)); Text(date, color = Ink, fontSize = 10.sp)
+                }
+                OutlinedButton(onClick = {
+                    val c = Calendar.getInstance()
+                    val parts = time.split(":").mapNotNull { it.toIntOrNull() }
+                    android.app.TimePickerDialog(context, { _, h, min ->
+                        time = String.format(Locale.US, "%02d:%02d", h, min)
+                    }, parts.getOrNull(0) ?: 12, parts.getOrNull(1) ?: 0, true).show()
+                }, shape = RoundedCornerShape(11.dp), modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Schedule, null, tint = Cyan, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(5.dp)); Text(time, color = Ink, fontSize = 10.sp)
+                }
+            }
+            Text("地点", color = Cyan, fontSize = 10.sp, letterSpacing = 1.sp)
+            NpInput(country, { country = it }, "国家")
+            NpInput(province, { province = it }, "省 / 州")
+            NpInput(city, { city = it }, "城市")
+            NpInput(district, { district = it }, "区 / 县")
+            NpInput(locationName, { locationName = it }, "地点名")
+            Text("人物", color = Cyan, fontSize = 10.sp, letterSpacing = 1.sp)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                items(people, key = { it.id }) { person ->
+                    NpChoiceChip(
+                        label = person.name,
+                        active = selectedPeople.contains(person.id),
+                        color = parseHex(person.color),
+                        onClick = {
+                            selectedPeople = if (selectedPeople.contains(person.id)) selectedPeople - person.id else selectedPeople + person.id
+                        },
+                    )
+                }
+            }
+            Text("标签", color = Cyan, fontSize = 10.sp, letterSpacing = 1.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                NpInput(tagInput, { tagInput = it }, "输入标签后回车", modifier = Modifier.weight(1f), singleLine = true, imeDone = { addTag() })
+                TextButton(onClick = { addTag() }) { Text("添加", color = Cyan) }
+            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                items(tags) { tag ->
+                    Row(
+                        Modifier.clip(RoundedCornerShape(50)).background(Color(0x99102030)).border(1.dp, Cyan.copy(alpha = .35f), RoundedCornerShape(50))
+                            .clickable { tags = tags - tag }.padding(horizontal = 9.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("#$tag", color = Cyan, fontSize = 9.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Outlined.Close, "移除标签", tint = Cyan, modifier = Modifier.size(11.dp))
+                    }
+                }
+            }
+            NpInput(note, { note = it }, "备注", singleLine = false, minLines = 3)
+            if (error != null) Text(error!!, color = Danger, fontSize = 11.sp)
+            Button(
+                onClick = {
+                    val body = JSONObject()
+                    if (title != photo.title) body.put("title", title)
+                    if (date != initialWall.first || time != initialWall.second) {
+                        val wall = "${date}T${time}:00"
+                        body.put("capturedLocal", wall)
+                        body.put("capturedAt", npWallToUtc(wall))
+                        body.put("dateSource", "manual")
+                    }
+                    if (country != photo.country) body.put("country", country)
+                    if (province != photo.province) body.put("province", province)
+                    if (city != photo.city) body.put("city", city)
+                    if (district != photo.district) body.put("district", district)
+                    if (locationName != photo.locationName) body.put("locationName", locationName)
+                    if (note != photo.notes) body.put("notes", note)
+                    if (selectedPeople != photo.personIds.toSet()) body.put("personIds", JSONArray(selectedPeople.toList()))
+                    if (tags != photo.tags) body.put("tags", JSONArray(tags))
+                    if (body.length() == 0) { onDismiss(); return@Button }
+                    busy = true; error = null
+                    scope.launch {
+                        try { onSaved(Api.updatePhoto(photo.id, body)) }
+                        catch (e: Exception) { error = e.message ?: "保存失败，请检查网络" }
+                        finally { busy = false }
+                    }
+                },
+                enabled = !busy,
+                colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Color(0xFF031018)),
+                shape = RoundedCornerShape(13.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) {
+                if (busy) CircularProgressIndicator(Modifier.size(19.dp), color = Color(0xFF031018), strokeWidth = 2.dp)
+                else Text("保存照片档案", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NpInput(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
+    imeDone: (() -> Unit)? = null,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label, fontSize = 11.sp) },
+        singleLine = singleLine,
+        minLines = minLines,
+        keyboardOptions = KeyboardOptions(imeAction = if (imeDone != null) ImeAction.Done else ImeAction.Next),
+        keyboardActions = KeyboardActions(onDone = { imeDone?.invoke() }),
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Cyan,
+            unfocusedBorderColor = Color.White.copy(alpha = .14f),
+            focusedLabelColor = Cyan,
+            unfocusedLabelColor = Soft,
+            focusedTextColor = Ink,
+            unfocusedTextColor = Ink,
+            focusedContainerColor = Color(0xFF06111D),
+            unfocusedContainerColor = Color(0xFF06111D),
+        ),
+        modifier = modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun NpChoiceChip(label: String, active: Boolean, color: Color, onClick: () -> Unit) {
+    Row(
+        Modifier.clip(RoundedCornerShape(50))
+            .background(if (active) color.copy(alpha = .18f) else Color(0x99102030))
+            .border(1.dp, if (active) color else Color.White.copy(alpha = .14f), RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(5.dp))
+        Text(label, color = if (active) Ink else Soft, fontSize = 10.sp)
+    }
+}
+
+private fun npWallParts(photo: Photo): Pair<String, String> {
+    val raw = photo.capturedLocal
+    if (raw.length >= 16) return raw.take(10) to raw.substring(11, 16)
+    val parsed = runCatching {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .parse(photo.capturedAt)
+    }.getOrNull()
+    if (parsed == null) return "" to "12:00"
+    val local = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).format(parsed)
+    return local.take(10) to local.substring(11, 16)
+}
+
+private fun npWallToUtc(wall: String): String {
+    return runCatching {
+        val input = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).parse(wall) ?: return ""
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .format(input)
+    }.getOrDefault("")
 }

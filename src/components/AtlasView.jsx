@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ArrowRight, ArrowUpRight, CalendarDays, ChevronRight, Images, Layers3, MapPin, Plus, Search, Sparkles, UserRound, X } from 'lucide-react';
 import AtlasMap from '../map/AtlasMap.jsx';
+import AnimatedNumber from './AnimatedNumber.jsx';
+import { stopsDistanceKm } from '../lib/geo-arc.js';
 import { cx, dateRange, formatDateDots, initials, personMap } from '../lib/utils.js';
 
 function greeting() {
@@ -19,6 +21,8 @@ export default function AtlasView({
   provider, setProvider, amapKey, userLocation, nativePlace, tracks = [],
 }) {
   const [q, setQ] = useState('');
+  const totalDistance = useMemo(() => tracks.reduce((sum, track) => sum + stopsDistanceKm(track.stops || []), 0), [tracks]);
+  const cityCount = useMemo(() => new Set(photos.map(photo => photo.city || photo.province).filter(Boolean)).size, [photos]);
   const peopleById = useMemo(() => personMap(people), [people]);
   const searchPlaces = useMemo(() => {
     if (!q.trim()) return filteredPlaces;
@@ -72,6 +76,13 @@ export default function AtlasView({
             <div><strong>{String(photos.length).padStart(2, '0')}</strong><span>影像</span></div>
             <i />
             <div><strong>{String(people.length).padStart(2, '0')}</strong><span>旅人</span></div>
+          </div>
+          <div className="stat-strip travel-stat-strip">
+            <div><strong><AnimatedNumber value={Math.round(totalDistance)} /></strong><span>总里程 km</span></div>
+            <i />
+            <div><strong><AnimatedNumber value={photos.length} /></strong><span>影像</span></div>
+            <i />
+            <div><strong><AnimatedNumber value={cityCount} /></strong><span>城市</span></div>
           </div>
         </div>
 
