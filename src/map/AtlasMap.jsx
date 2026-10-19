@@ -6,6 +6,7 @@ import { Compass, LocateFixed, Map as MapIcon, Minus, Plus, Orbit } from 'lucide
 import AmapView from './AmapView.jsx';
 import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/coords.js';
 import { photoDisplayDate, photoSortValue } from '../lib/utils.js';
+import { arcFeature } from '../lib/geo-arc.js';
 
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
@@ -148,6 +149,13 @@ function photoData(photos) {
   return { type: 'FeatureCollection', features };
 }
 
+function trackData(tracks) {
+  return {
+    type: 'FeatureCollection',
+    features: (tracks || []).map(arcFeature).filter(Boolean),
+  };
+}
+
 function journeyData(photos) {
   const sorted = [...(photos || [])]
     .filter(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
@@ -184,7 +192,7 @@ function makePlaceMarkerElement(label) {
   return el;
 }
 
-export default function AtlasMap({ theme, photos, selectedId, focus, regions, onPhotoOpen, onProvinceClick, onCityClick, onDistrictClick, onNotice, onMapReady, pickMode, onPick, provider = 'libre', setProvider, amapKey = '', userLocation = null, nativePlace = null }) {
+export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus, regions, onPhotoOpen, onProvinceClick, onCityClick, onDistrictClick, onNotice, onMapReady, pickMode, onPick, provider = 'libre', setProvider, amapKey = '', userLocation = null, nativePlace = null }) {
   const hostRef = useRef(null);
   const mapRef = useRef(null);
   const amapRef = useRef(null);
@@ -222,7 +230,7 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
   const userMarkerRef = useRef(null);
   const nativePlaceMarkerRef = useRef(null);
 
-  dataRef.current = { photos, selectedId };
+  dataRef.current = { photos, selectedId, tracks };
   callbacksRef.current = { onPhotoOpen, onProvinceClick, onCityClick, onDistrictClick, onNotice, onPick };
   pickRef.current = { pickMode, onPick };
   themeRef.current = theme;
@@ -231,9 +239,10 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
 
   function updateData(map) {
     if (!map?.getSource('photos')) return;
-    const { photos: list, selectedId: sid } = dataRef.current;
+    const { photos: list, selectedId: sid, tracks: trackList } = dataRef.current;
     map.getSource('photos')?.setData(photoData(list));
     map.getSource('journey')?.setData(journeyData(list));
+    map.getSource('tracks')?.setData(trackData(trackList));
     if (map.getLayer('photo-point-active')) {
       map.setFilter('photo-point-active', ['==', ['get', 'id'], sid || '__none__']);
     }
@@ -352,6 +361,7 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
       clusterRadius: 48,
     });
     map.addSource('journey', { type: 'geojson', data: journeyData(dataRef.current.photos) });
+    map.addSource('tracks', { type: 'geojson', data: trackData(dataRef.current.tracks) });
     map.addSource('pick', { type: 'geojson', data: EMPTY });
 
     map.addLayer({
@@ -562,6 +572,26 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
         'line-width': 1.1,
         'line-opacity': .42,
         'line-dasharray': [1.5, 3],
+      },
+    });
+
+    map.addLayer({
+      id: 'track-line-glow', type: 'line', source: 'tracks',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 7,
+        'line-blur': 8,
+        'line-opacity': .18,
+      },
+    });
+    map.addLayer({
+      id: 'track-line', type: 'line', source: 'tracks',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 2,
+        'line-opacity': .9,
       },
     });
 
@@ -873,7 +903,7 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
     const map = mapRef.current;
     if (!map || !ready) return;
     updateData(map);
-  }, [photos, selectedId, ready]);
+  }, [photos, selectedId, tracks, ready]);
 
   useEffect(() => {
     const map = mapRef.current;

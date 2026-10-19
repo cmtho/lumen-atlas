@@ -342,6 +342,25 @@ function publicSite(db) {
   };
 }
 
+function normalizeTrackStops(value) {
+  if (!Array.isArray(value) || value.length < 2) return { error: '轨迹至少需要两个地点' };
+  if (value.length > 50) return { error: '轨迹最多支持 50 个地点' };
+  const stops = [];
+  for (const item of value) {
+    const name = safeText(item?.name, 80);
+    if (!name) return { error: '地点名称不能为空' };
+    const lng = Number(item?.lng);
+    const lat = Number(item?.lat);
+    if (item?.lng == null || item?.lat == null || item?.lng === '' || item?.lat === '' || !Number.isFinite(lng) || !Number.isFinite(lat) || lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+      return { error: '坐标不合法' };
+    }
+    const at = safeText(item?.at, 40);
+    if (!at || Number.isNaN(Date.parse(at))) return { error: '地点时间不合法' };
+    stops.push({ name, lng, lat, at });
+  }
+  return { stops };
+}
+
 function publicDb(db, user) {
   const people = db.people.filter(p => p.userId === user.id);
   const photos = db.photos.filter(p => p.userId === user.id);
@@ -356,6 +375,7 @@ function publicDb(db, user) {
     people,
     photos,
     invites,
+    tracks: db.tracks.filter(t => t.userId === user.id),
     meta: {
       mapProvider: 'OpenFreeMap',
       amapKey: getAmapKey(),
@@ -750,6 +770,66 @@ app.delete('/api/photos/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/tracks', async (req, res) => {
+  const db = await loadDb();
+  const tracks = db.tracks
+    .filter(t => t.userId === req.user.id)
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  res.json({ tracks });
+});
+
+app.post('/api/tracks', async (req, res) => {
+  const b = req.body || {};
+  const title = safeText(b.title, 60) || '未命名轨迹';
+  const parsed = normalizeTrackStops(b.stops);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const now = new Date().toISOString();
+  const track = {
+    id: nextId('trk'),
+    userId: req.user.id,
+    title,
+    stops: parsed.stops,
+    color: /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#65f4ff',
+    notes: safeText(b.notes, 2000),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await mutate(db => { db.tracks.push(track); });
+  res.status(201).json({ track });
+});
+
+app.patch('/api/tracks/:id', async (req, res) => {
+  const b = req.body || {};
+  const parsed = 'stops' in b ? normalizeTrackStops(b.stops) : null;
+  const current = await loadDb();
+  if (!current.tracks.some(t => t.id === req.params.id && t.userId === req.user.id)) {
+    return res.status(404).json({ error: '轨迹不存在' });
+  }
+  if (parsed?.error) return res.status(400).json({ error: parsed.error });
+  const updated = await mutate(db => {
+    const track = db.tracks.find(t => t.id === req.params.id && t.userId === req.user.id);
+    if (!track) return null;
+    if ('title' in b) track.title = safeText(b.title, 60) || '未命名轨迹';
+    if (parsed) track.stops = parsed.stops;
+    if ('color' in b) track.color = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#65f4ff';
+    if ('notes' in b) track.notes = safeText(b.notes, 2000);
+    track.updatedAt = new Date().toISOString();
+    return { track };
+  });
+  if (!updated) return res.status(404).json({ error: '轨迹不存在' });
+  res.json({ track: updated.track });
+});
+
+app.delete('/api/tracks/:id', async (req, res) => {
+  const removed = await mutate(db => {
+    const idx = db.tracks.findIndex(t => t.id === req.params.id && t.userId === req.user.id);
+    if (idx < 0) return null;
+    return db.tracks.splice(idx, 1)[0];
+  });
+  if (!removed) return res.status(404).json({ error: '轨迹不存在' });
+  res.json({ ok: true });
+});
+
 app.post('/api/people', async (req, res) => {
   const name = safeText(req.body?.name, 30);
   if (!name) return res.status(400).json({ error: '请输入人物名称' });
@@ -1022,6 +1102,7 @@ app.delete('/api/admin/users/:id', async (req, res) => {
       db.photos = db.photos.filter(p => p.userId !== user.id);
       db.people = db.people.filter(p => p.userId !== user.id);
       db.invites = db.invites.filter(i => i.createdBy !== user.id);
+      db.tracks = db.tracks.filter(t => t.userId !== user.id);
       return { user: accountOf(user), photos, avatarUrl: user.profile?.avatarUrl || null };
     });
     if (!removed) return res.status(404).json({ error: '用户不存在' });

@@ -90,6 +90,7 @@ export const seedDatabase = () => ({
   people: [],
   photos: [],
   invites: [],
+  tracks: [],
   settings: { ...DEFAULT_SETTINGS },
 });
 
@@ -156,6 +157,7 @@ export async function loadDb() {
   if (!Array.isArray(raw.people)) raw.people = [];
   if (!Array.isArray(raw.photos)) raw.photos = [];
   if (!Array.isArray(raw.invites)) raw.invites = [];
+  if (!Array.isArray(raw.tracks)) raw.tracks = [];
   if (!raw.settings || typeof raw.settings !== 'object') {
     raw.settings = { ...DEFAULT_SETTINGS };
     migrated = true;

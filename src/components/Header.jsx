@@ -1,9 +1,10 @@
-import { Compass, Globe2, Images, Plus, Search, ShieldCheck, Sun, Moon, UserRound, Users } from 'lucide-react';
+import { Compass, Globe2, Images, Plus, Route, Search, ShieldCheck, Sun, Moon, UserRound, Users } from 'lucide-react';
 import { initials, cx } from '../lib/utils.js';
 
 const tabs = [
   { id: 'atlas', label: '星图', en: 'ATLAS', icon: Globe2 },
   { id: 'archive', label: '档案', en: 'ARCHIVE', icon: Images },
+  { id: 'tracks', label: '轨迹', en: 'TRACKS', icon: Route },
   { id: 'people', label: '旅人', en: 'PEOPLE', icon: Users },
   { id: 'profile', label: '我的', en: 'PROFILE', icon: UserRound },
 ];

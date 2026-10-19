@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import Header, { MobileNav } from './components/Header.jsx';
 import AtlasView from './components/AtlasView.jsx';
+import TracksView from './components/TracksView.jsx';
 import ArchiveView from './components/ArchiveView.jsx';
 import PeopleView from './components/PeopleView.jsx';
 import ProfileView from './components/ProfileView.jsx';
@@ -68,10 +69,16 @@ export default function App() {
   const [personModal, setPersonModal] = useState({ open: false, person: null });
   const [profileModal, setProfileModal] = useState(false);
   const [passwordModal, setPasswordModal] = useState(false);
+  const [tracksDirty, setTracksDirty] = useState(false);
 
   const notice = useCallback((message, type = 'success') => {
     setToast({ id: Date.now() + Math.random(), message, type });
   }, []);
+
+  const guardSetView = useCallback((next) => {
+    if (view === 'tracks' && next !== 'tracks' && tracksDirty && !window.confirm('当前轨迹还没有保存，确定离开吗？')) return;
+    setView(next);
+  }, [view, tracksDirty]);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError('');
@@ -140,9 +147,13 @@ export default function App() {
   }, []);
 
   const photos = data?.photos || [];
+  const tracks = data?.tracks || [];
   const people = data?.people || [];
   const regions = data?.regions || null;
   const places = useMemo(() => buildPlaces(photos), [photos]);
+  const handleTracksChange = useCallback((next) => {
+    setData(prev => (prev ? { ...prev, tracks: next } : prev));
+  }, []);
 
   const filteredPlaces = useMemo(() => {
     if (!personFilter) return places;
@@ -413,7 +424,7 @@ export default function App() {
       <div className="ambient-bg" aria-hidden="true"><span className="ambient-a" /><span className="ambient-b" /><span className="ambient-c" /></div>
       <div className="grain" aria-hidden="true" />
       {!EMBED_MAP && <Header
-        view={view} setView={setView} theme={theme}
+        view={view} setView={guardSetView} theme={theme}
         onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
         onUpload={() => openUpload()} profile={data.profile}
         onSearch={() => setSearchOpen(true)} isStaff={isStaff} site={data.site}
@@ -430,7 +441,7 @@ export default function App() {
           onProvinceClick={handleProvinceClick} onCityClick={handleCityClick} onDistrictClick={handleDistrictClick} focus={mapFocus} setFocus={setMapFocus}
           theme={theme} onNotice={notice} pickMode={pickMode} onPick={handlePick}
           provider={mapProvider} setProvider={changeMapProvider} amapKey={data.meta?.amapKey || ''}
-          userLocation={userLocation} nativePlace={nativePlace}
+          userLocation={userLocation} nativePlace={nativePlace} tracks={tracks}
         />
         {view === 'admin' && isStaff && <AdminView account={data.account} onNotice={notice} onSiteUpdate={handleSiteUpdate} />}
         {view === 'archive' && (
@@ -440,6 +451,15 @@ export default function App() {
             onOpenPhoto={openPhoto} onUpload={() => openUpload()}
             onClearFilter={() => setArchiveFilter(EMPTY_FILTER)}
             onPersonFilter={(id) => setArchiveFilter(prev => ({ ...prev, personId: id || '' }))}
+          />
+        )}
+        {view === 'tracks' && (
+          <TracksView
+            tracks={tracks}
+            regions={regions}
+            onTracksChange={handleTracksChange}
+            onNotice={notice}
+            onDirtyChange={setTracksDirty}
           />
         )}
         {view === 'people' && (
@@ -467,7 +487,7 @@ export default function App() {
         )}
       </main>
 
-      {!EMBED_MAP && <MobileNav view={view} setView={setView} onUpload={() => openUpload()} />}
+      {!EMBED_MAP && <MobileNav view={view} setView={guardSetView} onUpload={() => openUpload()} />}
 
       <SearchPalette
         open={searchOpen} onClose={() => setSearchOpen(false)}
