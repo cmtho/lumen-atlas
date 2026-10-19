@@ -668,17 +668,6 @@ export default function AtlasMap({ theme, photos, tracks = [], selectedId, focus
       },
     });
     map.addLayer({
-      id: 'photo-cluster-count', type: 'symbol', source: 'photos',
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': ['get', 'point_count_abbreviated'],
-        'text-font': ['Noto Sans Bold'],
-        'text-size': 11,
-        'text-allow-overlap': true,
-      },
-      paint: { 'text-color': c.textStrong, 'text-halo-color': c.halo, 'text-halo-width': .6 },
-    });
-    map.addLayer({
       id: 'photo-glow', type: 'circle', source: 'photos',
       filter: ['!', ['has', 'point_count']],
       paint: {
