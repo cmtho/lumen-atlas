@@ -922,7 +922,7 @@ export default function AtlasMap({ theme, photos, selectedId, focus, regions, on
     const map = mapRef.current;
     if (!nativePlaceMarkerRef.current) {
       const el = makePlaceMarkerElement(nativePlace.label);
-      nativePlaceMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      nativePlaceMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([nativePlace.lng, nativePlace.lat])
         .addTo(map);
     } else {

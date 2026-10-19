@@ -1769,22 +1769,30 @@ html.embed-map .atlas-view { position: fixed; inset: 0; }
   background: #65f4ff; border: 2px solid #031018;
   box-shadow: 0 0 0 4px rgba(101, 244, 255, .14), 0 0 20px rgba(101, 244, 255, .85);
 }
-.lumen-native-place { position: relative; display: flex; flex-direction: column; align-items: center; transform: translateY(-2px); pointer-events: none; }
+.lumen-native-place {
+  position: relative; width: 14px; height: 14px; pointer-events: none;
+}
 .lumen-native-place > span {
-  width: 15px; height: 15px; border-radius: 50%; background: #ffcf70;
-  border: 3px solid #031018; box-shadow: 0 0 0 3px rgba(255, 207, 112, .18), 0 0 16px rgba(255, 207, 112, .55);
+  position: absolute; inset: 0; border-radius: 50%; background: #ffcf70;
+  border: 2px solid #031018; box-shadow: 0 0 0 5px rgba(255, 207, 112, .12), 0 0 22px rgba(255, 207, 112, .7);
 }
 .lumen-native-place > span::after {
-  content: ''; position: absolute; left: 50%; top: 15px; transform: translateX(-50%);
-  border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 9px solid #ffcf70;
+  content: ''; position: absolute; inset: -9px; border-radius: 50%;
+  border: 1px solid rgba(255, 207, 112, .35); animation: lumen-place-pulse 2.4s ease-out infinite;
 }
 .lumen-native-place em {
-  margin-top: 13px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 3px 8px; border-radius: 7px; background: rgba(3, 8, 17, .82);
+  position: absolute; left: 50%; top: 18px; transform: translateX(-50%);
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 3px 8px; border-radius: 7px; background: rgba(3, 8, 17, .84);
   border: 1px solid rgba(255, 207, 112, .28); color: #ffdfa1; font-style: normal;
   font-family: var(--font-mono); font-size: 9px; letter-spacing: .02em;
 }
-@keyframes lumen-user-pulse {
+@keyframes lumen-place-pulse {
+  0% { transform: scale(.7); opacity: .9; }
+  75% { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+@keyframes lumen-user-pulse@keyframes lumen-user-pulse {
   0% { transform: translate(-50%, -50%) scale(.35); opacity: .85; }
   70% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
   100% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }

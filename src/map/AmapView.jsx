@@ -207,7 +207,7 @@ export default function AmapView({
     if (!nativePlaceMarkerRef.current) {
       const el = makePlaceMarkerElement(nativePlace.label);
       nativePlaceMarkerRef.current = new AMap.Marker({
-        position: [lng, lat], content: el, anchor: 'bottom-center', zIndex: 210, bubble: false,
+        position: [lng, lat], content: el, anchor: 'center', zIndex: 210, bubble: false,
       });
       nativePlaceMarkerRef.current.setMap(map);
     } else {
