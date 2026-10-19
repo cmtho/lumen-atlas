@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Aperture, Camera, Copy, Database, Download, Globe2, HardDrive, KeyRound, Link2, LogOut, MapPin, Moon, Pencil, RotateCcw, ShieldCheck, Sparkles, Sun, Ticket, Trash2 } from 'lucide-react';
-import { formatDateDots, initials, regionKey } from '../lib/utils.js';
+import { formatPhotoDateDots, initials, photoYear, regionKey } from '../lib/utils.js';
 
 export default function ProfileView({ profile, photos, places, people, theme, onToggleTheme, onEditProfile, onClearDemo, onRestoreDemo, demoCount, onNotice, account, invites = [], enableDemo, onGenerateInvite, onRevokeInvite, onLogout, onChangePassword, onOpenAdmin, isStaff, onAvatarUpload, onAvatarRemove }) {
   const avatarInputRef = useRef(null);
@@ -44,8 +44,8 @@ export default function ProfileView({ profile, photos, places, people, theme, on
 
   const maxRegion = topRegions[0]?.count || 1;
   const yearStart = useMemo(() => {
-    const dates = photos.map(p => new Date(p.capturedAt).getTime()).filter(Number.isFinite);
-    return dates.length ? new Date(Math.min(...dates)).getFullYear() : new Date().getFullYear();
+    const years = photos.map(photoYear).filter(Boolean);
+    return years.length ? Math.min(...years) : new Date().getFullYear();
   }, [photos]);
 
   return (
@@ -166,7 +166,7 @@ export default function ProfileView({ profile, photos, places, people, theme, on
             <div className="system-lines">
               <div><span>DATABASE</span><strong>ONLINE</strong></div>
               <div><span>MEDIA VAULT</span><strong>{photos.length} FILES</strong></div>
-              <div><span>LAST SYNC</span><strong>{photos[0] ? formatDateDots(photos[0].capturedAt) : '—'}</strong></div>
+              <div><span>LAST SYNC</span><strong>{photos[0] ? formatPhotoDateDots(photos[0]) : '—'}</strong></div>
               <div><span>ENCRYPTION</span><strong>LOCAL ONLY</strong></div>
               <div><span>PROVIDER</span><strong>OPENFREEMAP</strong></div>
             </div>

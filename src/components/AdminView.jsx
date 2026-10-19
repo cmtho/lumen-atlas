@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import Modal from './Modal.jsx';
 import { api } from '../lib/api.js';
-import { formatBytes, formatDateDots, initials } from '../lib/utils.js';
+import { formatBytes, formatDateDots, formatPhotoDateDots, initials } from '../lib/utils.js';
 
 const statusOf = (inv) => {
   if (inv.revokedAt) return ['已撤销', 'off'];
@@ -230,7 +230,7 @@ export default function AdminView({ account, onNotice, onSiteUpdate }) {
                   {overview?.recentPhotos?.map(p => (
                     <div key={p.id} className="admin-recent-item">
                       <img src={p.thumb} alt={p.title} />
-                      <span><strong>{p.title}</strong><small>@{p.username}</small></span>
+                      <span><strong>{p.title}</strong><small>@{p.username} · {formatPhotoDateDots(p)}</small></span>
                     </div>
                   ))}
                   {!overview?.recentPhotos?.length && <div className="admin-empty">还没有上传记录</div>}

@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
 import { ArrowUpRight, Camera, MapPin, Plus, Sparkles, UserRound, Users } from 'lucide-react';
-import { formatDateDots, initials, personMap, regionKey } from '../lib/utils.js';
+import { formatPhotoDateDots, initials, personMap, photoSortValue, regionKey } from '../lib/utils.js';
 
 export default function PeopleView({ people, photos, places, onAddPerson, onEditPerson, onOpenPhoto, onViewArchive, onUploadForPerson }) {
   const stats = useMemo(() => {
     return people.map(person => {
-      const own = photos.filter(p => p.personIds?.includes(person.id)).sort((a, b) => new Date(b.capturedAt) - new Date(a.capturedAt));
+      const own = photos.filter(p => p.personIds?.includes(person.id)).sort((a, b) => photoSortValue(b) - photoSortValue(a));
       const placeKeys = new Set(own.map(regionKey));
       const countryKeys = new Set(own.map(p => p.countryCode || p.country).filter(Boolean));
-      return { person, photos: own, places: placeKeys.size, countries: countryKeys.size, last: own[0]?.capturedAt };
+      return { person, photos: own, places: placeKeys.size, countries: countryKeys.size, last: own[0] ? formatPhotoDateDots(own[0]) : null };
     }).sort((a, b) => b.photos.length - a.photos.length);
   }, [people, photos]);
 
@@ -88,7 +88,7 @@ export default function PeopleView({ people, photos, places, onAddPerson, onEdit
                 <span><strong>{own.length}</strong><small>影像</small></span>
                 <span><strong>{placeCount}</strong><small>坐标</small></span>
                 <span><strong>{countries}</strong><small>地区</small></span>
-                <span className="person-last"><small>最近</small><strong>{last ? formatDateDots(last).slice(0, 7) : '—'}</strong></span>
+                <span className="person-last"><small>最近</small><strong>{last ? last.slice(0, 7) : '—'}</strong></span>
               </div>
 
               <div className="person-actions">

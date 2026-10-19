@@ -1792,7 +1792,7 @@ html.embed-map .atlas-view { position: fixed; inset: 0; }
   75% { transform: scale(1.5); opacity: 0; }
   100% { transform: scale(1.5); opacity: 0; }
 }
-@keyframes lumen-user-pulse@keyframes lumen-user-pulse {
+@keyframes lumen-user-pulse {
   0% { transform: translate(-50%, -50%) scale(.35); opacity: .85; }
   70% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }
   100% { transform: translate(-50%, -50%) scale(1.4); opacity: 0; }

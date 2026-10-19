@@ -8,13 +8,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {
-  ROOT, DATA_DIR, UPLOAD_DIR, THUMB_DIR, ORIGINAL_DIR, AVATAR_DIR,
+  ROOT, DATA_DIR, UPLOAD_DIR, THUMB_DIR, ORIGINAL_DIR, AVATAR_DIR, TMP_DIR,
   loadDb, mutate, nextId, getDemoPhotosForUser, DEFAULT_SETTINGS,
 } from './db.js';
 import { hashPassword, verifyPassword, generateInviteCode, generatePassword } from './passwords.js';
 import { sessionCookie, verifySessionToken, cookieValue, COOKIE as SESSION_COOKIE } from './session.js';
 import { reverseGeocode, searchPlaces, aroundPois, setAmapKey, getAmapKey } from './geocode.js';
 import { loadGeo, regionIndex, lookupRegionCenter, resolveChina } from './geo.js';
+import { resolveCaptureTime, localWallFromDate, normalizeOffset } from './capture-time.js';
 
 const PORT = Number(process.env.PORT || 8099);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -22,18 +23,30 @@ const DIST = path.join(ROOT, 'dist');
 const app = express();
 
 app.disable('x-powered-by');
-app.set('trust proxy', 1);
+app.set('trust proxy', process.env.ATLAS_TRUST_PROXY ?? 'loopback');
 app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '4mb' }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy-Report-Only', "default-src 'self'; img-src 'self' data: blob: https://*.autonavi.com https://*.openfreemap.org; connect-src 'self' https://*.autonavi.com https://*.openfreemap.org https://nominatim.openstreetmap.org https://restapi.amap.com; script-src 'self' 'unsafe-inline' https://webapi.amap.com; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; frame-ancestors 'none'");
+  if (req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  const ext = path.extname(req.path).toLowerCase();
+  if (req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/media/') && (!ext || ext === '.html')) {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  }
   if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   next();
 });
 
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, TMP_DIR),
+    filename: (req, file, cb) => cb(null, `${crypto.randomBytes(16).toString('hex')}.tmp`),
+  }),
   limits: { fileSize: 50 * 1024 * 1024, files: 30, fieldSize: 8 * 1024 * 1024 },
 });
 const uploadAvatar = multer({
@@ -55,6 +68,11 @@ function checkRate(key, max = 10, windowMs = 10 * 60 * 1000) {
 }
 
 function clearRate(key) { loginAttempts.delete(key); }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, rec] of loginAttempts) if (rec.reset < now) loginAttempts.delete(key);
+}, 60 * 1000).unref();
 
 const isHeic = (file) => /\.(heic|heif)$/i.test(file.originalname) || /hei[cf]/i.test(file.mimetype);
 const imageExt = (file) => {
@@ -105,11 +123,18 @@ async function readExif(buffer) {
       translateValues: true, reviveValues: true,
     });
     if (!x) return {};
+    let raw = null;
+    try {
+      raw = await exifr.parse(buffer, { tiff: true, exif: true, ifd0: true, translateValues: false, reviveValues: false });
+    } catch {}
     let make = safeText(x.Make, 60);
     let model = safeText(x.Model, 80);
     if (make && model.toLowerCase().startsWith(make.toLowerCase())) model = model.slice(make.length).trim();
     return {
-      capturedAt: x.DateTimeOriginal || x.CreateDate || x.ModifyDate || null,
+      dateTimeOriginal: raw?.DateTimeOriginal ?? null,
+      offsetTimeOriginal: raw?.OffsetTimeOriginal ?? raw?.OffsetTime ?? raw?.OffsetTimeDigitized ?? null,
+      createDate: raw?.CreateDate ?? null,
+      modifyDate: raw?.ModifyDate ?? null,
       lat: Number.isFinite(x.latitude) ? x.latitude : null,
       lng: Number.isFinite(x.longitude) ? x.longitude : null,
       camera: [make, model].filter(Boolean).join(' ') || null,
@@ -128,11 +153,13 @@ async function readExif(buffer) {
 
 async function prepareImage(file) {
   const id = crypto.randomBytes(9).toString('base64url');
-  let input = file.buffer;
+  let input = file.path;
   let convertedHeic = false;
   if (isHeic(file)) {
+    // TODO: prefer sharp's native HEIF decoder when available, and only fall back
+    // to heic-convert on failure. Kept as-is for this batch.
     try {
-      input = Buffer.from(await heicConvert({ buffer: file.buffer, format: 'JPEG', quality: 0.92 }));
+      input = Buffer.from(await heicConvert({ buffer: await fs.readFile(file.path), format: 'JPEG', quality: 0.92 }));
       convertedHeic = true;
     } catch {
       const err = new Error('HEIC 解码失败，请在手机设置中将照片导出为 JPEG 后重试。');
@@ -140,9 +167,8 @@ async function prepareImage(file) {
       throw err;
     }
   }
-  let image = sharp(input, { failOn: 'none' }).rotate();
-  let meta;
-  try { meta = await image.metadata(); } catch {
+  const image = sharp(input, { failOn: 'none' }).rotate();
+  try { await image.metadata(); } catch {
     const err = new Error('无法读取这张图片，请确认文件是有效的 JPEG / PNG / WebP / HEIC。');
     err.status = 422;
     throw err;
@@ -151,16 +177,51 @@ async function prepareImage(file) {
   const originalName = `${id}${ext}`;
   const fullName = `${id}.webp`;
   const thumbName = `${id}.webp`;
-  const [fullBuf, thumbBuf] = await Promise.all([
-    image.clone().resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 88, effort: 4 }).toBuffer(),
-    image.clone().resize({ width: 760, height: 760, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82, effort: 4 }).toBuffer(),
+  const [full, thumb] = await Promise.all([
+    image.clone().resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 88, effort: 4 }).toBuffer({ resolveWithObject: true }),
+    image.clone().resize({ width: 760, height: 760, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82, effort: 4 }).toBuffer({ resolveWithObject: true }),
   ]);
+  const originalPath = path.join(ORIGINAL_DIR, originalName);
   await Promise.all([
-    fs.writeFile(path.join(UPLOAD_DIR, fullName), fullBuf),
-    fs.writeFile(path.join(THUMB_DIR, thumbName), thumbBuf),
-    fs.writeFile(path.join(ORIGINAL_DIR, originalName), convertedHeic ? input : file.buffer),
+    fs.writeFile(path.join(UPLOAD_DIR, fullName), full.data),
+    fs.writeFile(path.join(THUMB_DIR, thumbName), thumb.data),
+    convertedHeic ? fs.writeFile(originalPath, input) : fs.copyFile(file.path, originalPath),
   ]);
-  return { id, originalName, fullName, thumbName, width: meta.width, height: meta.height, originalBytes: file.size };
+  return { id, originalName, fullName, thumbName, width: full.info.width, height: full.info.height, originalBytes: file.size };
+}
+
+async function removePreparedFiles(prepared) {
+  if (!prepared) return;
+  await Promise.all([
+    fs.unlink(path.join(UPLOAD_DIR, prepared.fullName)).catch(() => {}),
+    fs.unlink(path.join(THUMB_DIR, prepared.thumbName)).catch(() => {}),
+    fs.unlink(path.join(ORIGINAL_DIR, prepared.originalName)).catch(() => {}),
+  ]);
+}
+
+async function runWithLimit(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function runner() {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
+  return results;
+}
+
+function uploadedFiles(req) {
+  if (Array.isArray(req.files)) return req.files;
+  if (req.files && typeof req.files === 'object') return Object.values(req.files).flat();
+  return req.file ? [req.file] : [];
+}
+
+async function cleanupUploadedFiles(req) {
+  const files = uploadedFiles(req).filter(file => file?.path);
+  await Promise.allSettled(files.map(file => fs.unlink(file.path)));
 }
 
 function normalizePhotoInput(meta, exif, file, prepared, people, userId) {
@@ -178,8 +239,17 @@ function normalizePhotoInput(meta, exif, file, prepared, people, userId) {
     const reg = lookupRegionCenter(province, city, district);
     if (reg?.center) { lng = reg.center[0]; lat = reg.center[1]; }
   }
-  const date = timestamp(meta.date) || timestamp(exif.capturedAt) || timestamp(file.lastModified) || new Date().toISOString();
-  const dateSource = meta.date ? (meta.dateSource || 'manual') : exif.capturedAt ? 'exif' : 'file';
+  const manualDate = meta.date && (meta.dateSource === 'manual' || !meta.dateSource) ? timestamp(meta.date) : null;
+  let capture;
+  if (manualDate) {
+    const rawLocal = safeText(meta.capturedLocal, 19);
+    const local = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(rawLocal)
+      ? `${rawLocal}${rawLocal.length === 16 ? ':00' : ''}`
+      : localWallFromDate(manualDate);
+    capture = { capturedAt: manualDate, capturedLocal: local, tzOffset: normalizeOffset(meta.tzOffset), dateSource: 'manual' };
+  } else {
+    capture = resolveCaptureTime(exif, file.lastModified);
+  }
   const baseName = path.basename(file.originalname, path.extname(file.originalname));
   const dimensions = prepared.width && prepared.height ? `${prepared.width} × ${prepared.height}` : meta.dimensions || '';
   return {
@@ -190,8 +260,10 @@ function normalizePhotoInput(meta, exif, file, prepared, people, userId) {
     image: `/media/uploads/${prepared.fullName}`,
     thumb: `/media/thumbs/${prepared.thumbName}`,
     original: `/media/originals/${prepared.originalName}`,
-    capturedAt: date,
-    dateSource,
+    capturedAt: capture.capturedAt,
+    capturedLocal: capture.capturedLocal,
+    tzOffset: capture.tzOffset,
+    dateSource: capture.dateSource,
     country, countryCode, province, city, district,
     locationName: locationName || district || city || province || country,
     lat, lng, personIds,
@@ -318,7 +390,7 @@ app.post('/api/auth/register', async (req, res) => {
   const password = String(req.body?.password || '');
   const displayName = safeText(req.body?.displayName, 40);
   const code = String(req.body?.inviteCode || '').trim().toUpperCase();
-  const ip = req.socket.remoteAddress || 'unknown';
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkRate(`register:${ip}`, 12)) return res.status(429).json({ error: '尝试次数过多，请稍后再试' });
   if (username.length < 3 || username.length > 24) return res.status(400).json({ error: '用户名需要 3–24 位，只能使用字母、数字、_、-' });
   if (password.length < 8 || password.length > 128) return res.status(400).json({ error: '密码至少 8 位' });
@@ -384,7 +456,8 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const username = sanitizeUsername(req.body?.username);
   const password = String(req.body?.password || '');
-  const ip = req.socket.remoteAddress || 'unknown';
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (!checkRate(`login-ip:${ip}`, 10, 10 * 60 * 1000)) return res.status(429).json({ error: '尝试次数过多，请十分钟后再试' });
   if (!checkRate(`login:${ip}:${username}`, 10)) return res.status(429).json({ error: '尝试次数过多，请十分钟后再试' });
   const db = await loadDb();
   const user = db.users.find(u => u.username.toLowerCase() === username);
@@ -408,7 +481,7 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.post('/api/setup', async (req, res) => {
-  const ip = req.socket.remoteAddress || 'unknown';
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
   if (!checkRate(`setup:${ip}`, 8)) return res.status(429).json({ error: '尝试次数过多，请稍后再试' });
   const username = sanitizeUsername(req.body?.username);
   const password = String(req.body?.password || '');
@@ -556,35 +629,56 @@ app.post('/api/photos', upload.array('files', 30), async (req, res, next) => {
     if (!Array.isArray(metas)) metas = [];
     const db = await loadDb();
     const people = db.people.filter(p => p.userId === req.user.id);
-    const preparedList = [];
-    for (let i = 0; i < req.files.length; i++) {
-      const file = req.files[i];
-      file.lastModified = Number(metas[i]?.lastModified) || Date.now();
-      const prepared = await prepareImage(file);
-      preparedList.push({ prepared, exif: await readExif(file.buffer), meta: metas[i] && typeof metas[i] === 'object' ? metas[i] : {}, file });
-    }
-    const photos = [];
-    for (const item of preparedList) {
-      let photo = normalizePhotoInput(item.meta, item.exif, item.file, item.prepared, people, req.user.id);
-      photo = await fillLocationFallback(photo);
-      if ((!photo.province || !photo.city) && photo.lat != null && photo.lng != null) {
-        try {
-          const reg = await resolveChina(photo.lat, photo.lng);
-          if (reg) {
-            if (!photo.province) photo.province = reg.province;
-            if (!photo.city) photo.city = reg.city;
-            if (!photo.district) photo.district = reg.district;
-            if (!photo.country) photo.country = reg.country;
-            if (!photo.countryCode) photo.countryCode = reg.countryCode;
-            if (!photo.locationName) photo.locationName = reg.district || reg.city || reg.province;
-          }
-        } catch {}
+
+    const results = await runWithLimit(req.files, 2, async (file, index) => {
+      let prepared = null;
+      try {
+        file.lastModified = Number(metas[index]?.lastModified) || Date.now();
+        const exif = await readExif(await fs.readFile(file.path));
+        prepared = await prepareImage(file);
+        let photo = normalizePhotoInput(
+          metas[index] && typeof metas[index] === 'object' ? metas[index] : {},
+          exif, file, prepared, people, req.user.id,
+        );
+        photo = await fillLocationFallback(photo);
+        if ((!photo.province || !photo.city) && photo.lat != null && photo.lng != null) {
+          try {
+            const reg = await resolveChina(photo.lat, photo.lng);
+            if (reg) {
+              if (!photo.province) photo.province = reg.province;
+              if (!photo.city) photo.city = reg.city;
+              if (!photo.district) photo.district = reg.district;
+              if (!photo.country) photo.country = reg.country;
+              if (!photo.countryCode) photo.countryCode = reg.countryCode;
+              if (!photo.locationName) photo.locationName = reg.district || reg.city || reg.province;
+            }
+          } catch {}
+        }
+        return { photo };
+      } catch (e) {
+        await removePreparedFiles(prepared);
+        return { failure: { file: file.originalname, reason: e.message || '处理失败' } };
+      } finally {
+        await fs.unlink(file.path).catch(() => {});
       }
-      photos.push(photo);
+    });
+
+    const photos = results.filter(r => r.photo).map(r => r.photo);
+    const failures = results.filter(r => r.failure).map(r => r.failure);
+    let total;
+    if (photos.length) {
+      total = await mutate(database => {
+        database.photos.unshift(...photos);
+        return database.photos.filter(p => p.userId === req.user.id).length;
+      });
+    } else {
+      total = (await loadDb()).photos.filter(p => p.userId === req.user.id).length;
     }
-    await mutate(database => { database.photos.unshift(...photos); });
-    res.status(201).json({ photos, total: db.photos.filter(p => p.userId === req.user.id).length });
-  } catch (e) { next(e); }
+    res.status(201).json({ photos, total, failures });
+  } catch (e) {
+    await cleanupUploadedFiles(req);
+    next(e);
+  }
 });
 
 app.patch('/api/photos/:id', async (req, res) => {
@@ -596,9 +690,14 @@ app.patch('/api/photos/:id', async (req, res) => {
     for (const key of textFields) if (key in b) photo[key] = safeText(b[key], key === 'notes' ? 2000 : 160);
     if ('capturedAt' in b) {
       const d = timestamp(b.capturedAt);
-      if (d) { photo.capturedAt = d; photo.dateSource = b.dateSource || 'manual'; }
+      if (d) {
+        photo.capturedAt = d;
+        photo.capturedLocal = safeText(b.capturedLocal, 19) || localWallFromDate(d);
+        photo.tzOffset = normalizeOffset(b.tzOffset);
+        photo.dateSource = b.dateSource || 'manual';
+      }
     }
-    if ('dateSource' in b && ['exif', 'file', 'manual'].includes(b.dateSource)) photo.dateSource = b.dateSource;
+    if ('dateSource' in b && ['exif', 'exif-local', 'file', 'manual'].includes(b.dateSource)) photo.dateSource = b.dateSource;
     if ('lat' in b) photo.lat = numberOrNull(b.lat);
     if ('lng' in b) photo.lng = numberOrNull(b.lng);
     if ('iso' in b) photo.iso = numberOrNull(b.iso);
@@ -815,7 +914,7 @@ app.get('/api/admin/overview', async (req, res) => {
       photos: db.photos.filter(p => p.userId === u.id).length, disabled: !!u.disabled, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt || null,
     })),
     recentPhotos: [...db.photos].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 8).map(p => ({
-      id: p.id, title: p.title, thumb: p.thumb, createdAt: p.createdAt, username: db.users.find(u => u.id === p.userId)?.username || 'unknown',
+      id: p.id, title: p.title, thumb: p.thumb, capturedAt: p.capturedAt || null, capturedLocal: p.capturedLocal || null, createdAt: p.createdAt, username: db.users.find(u => u.id === p.userId)?.username || 'unknown',
     })),
     system: { uptime: Math.round(process.uptime()), node: process.version, amapEnabled: !!getAmapKey(), mapProvider: 'OpenFreeMap', auth: 'invite-only' },
   });
@@ -991,10 +1090,24 @@ app.delete('/api/profile/avatar', async (req, res) => {
   res.json({ ok: true, avatarUrl: null });
 });
 
-/* ---------- media (owner-only) ---------- */
+function canViewPhoto(db, user, photo) {
+  if (photo.userId === user.id) return true;
+  if (user.role === 'owner') return true;
+  if (user.role === 'admin') {
+    const owner = db.users.find(u => u.id === photo.userId);
+    return owner?.role === 'member';
+  }
+  return false;
+}
+
+/* ---------- media (auth) ---------- */
 const MEDIA_DIRS = { uploads: UPLOAD_DIR, thumbs: THUMB_DIR, originals: ORIGINAL_DIR };
 app.get('/media/avatars/:name', requireAuth, async (req, res) => {
   const fileName = path.basename(req.params.name);
+  const db = await loadDb();
+  const avatarUrl = `/media/avatars/${fileName}`;
+  const owner = db.users.find(u => u.profile?.avatarUrl === avatarUrl);
+  if (!owner || !canViewPhoto(db, req.user, { userId: owner.id })) return res.status(404).json({ error: '媒体文件不存在' });
   res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.sendFile(path.join(AVATAR_DIR, fileName), err => { if (err) res.status(404).end(); });
 });
@@ -1004,7 +1117,7 @@ app.get('/media/:kind/:name', requireAuth, async (req, res) => {
   const fileName = path.basename(req.params.name);
   const url = `/media/${req.params.kind}/${fileName}`;
   const db = await loadDb();
-  const owned = db.photos.some(p => (p.userId === req.user.id || req.user.role === 'owner') && (p.image === url || p.thumb === url || p.original === url));
+  const owned = db.photos.some(p => canViewPhoto(db, req.user, p) && (p.image === url || p.thumb === url || p.original === url));
   if (!owned) return res.status(404).json({ error: '媒体文件不存在' });
   res.setHeader('Cache-Control', 'private, max-age=604800');
   res.sendFile(path.join(dir, fileName), err => { if (err) res.status(404).end(); });
@@ -1027,8 +1140,9 @@ app.get('*', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(DIST, 'index.html'), err => { if (err) next(); });
 });
-app.use((err, req, res, next) => {
+app.use(async (err, req, res, next) => {
   console.error('[atlas]', err.message);
+  await cleanupUploadedFiles(req);
   if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: '单张照片不能超过 50MB' });
   if (err.code === 'LIMIT_FILE_COUNT') return res.status(413).json({ error: '一次最多上传 30 张照片' });
   res.status(err.status || 500).json({ error: err.message || '服务器处理失败' });

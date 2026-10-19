@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUpRight, Loader2, MapPin, Search, Sparkles, X } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { formatDateDots, placeLabel, shortPlace } from '../lib/utils.js';
+import { formatDateDots, formatPhotoDateDots, placeLabel, shortPlace } from '../lib/utils.js';
 
 export default function SearchPalette({ open, onClose, photos, places, people, onPhoto, onPlace, onPerson, onAddAtPlace }) {
   const [q, setQ] = useState('');
@@ -83,7 +83,7 @@ export default function SearchPalette({ open, onClose, photos, places, people, o
               {results.photos.map(p => (
                 <button key={p.id} className="search-result" onClick={() => { onClose(); onPhoto(p.id); }}>
                   <img src={p.thumb} alt="" />
-                  <span><strong>{p.title}</strong><small>{shortPlace(p)} · {formatDateDots(p.capturedAt)}</small></span>
+                  <span><strong>{p.title}</strong><small>{shortPlace(p)} · {formatPhotoDateDots(p)}</small></span>
                   <ArrowUpRight size={15} />
                 </button>
               ))}

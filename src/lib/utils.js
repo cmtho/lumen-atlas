@@ -62,15 +62,15 @@ export function buildPlaces(photos) {
   }
   const places = [];
   for (const entry of map.values()) {
-    entry.photos.sort((a, b) => new Date(b.capturedAt) - new Date(a.capturedAt));
+    entry.photos.sort((a, b) => photoSortValue(b) - photoSortValue(a));
     entry.cover = entry.photos[0];
     entry.count = entry.photos.length;
     entry.lat = entry.lats.reduce((a, b) => a + b, 0) / entry.lats.length;
     entry.lng = entry.lngs.reduce((a, b) => a + b, 0) / entry.lngs.length;
     entry.people = [...new Set(entry.photos.flatMap(p => p.personIds || []))];
-    entry.lastVisit = entry.photos[0].capturedAt;
-    entry.firstVisit = entry.photos[entry.photos.length - 1].capturedAt;
-    entry.years = [...new Set(entry.photos.map(p => new Date(p.capturedAt).getFullYear()))];
+    entry.lastVisit = photoDisplayDate(entry.photos[0]);
+    entry.firstVisit = photoDisplayDate(entry.photos[entry.photos.length - 1]);
+    entry.years = [...new Set(entry.photos.map(photoYear).filter(Boolean))];
     const minLat = Math.min(...entry.lats), maxLat = Math.max(...entry.lats);
     const minLng = Math.min(...entry.lngs), maxLng = Math.max(...entry.lngs);
     entry.bounds = entry.count > 1 && (maxLat - minLat > .001 || maxLng - minLng > .001)
@@ -78,15 +78,78 @@ export function buildPlaces(photos) {
     entry.zoom = entry.count > 1 ? 9 : 11;
     places.push(entry);
   }
-  return places.sort((a, b) => new Date(b.lastVisit) - new Date(a.lastVisit));
+  return places.sort((a, b) => (wallSortValue(b.lastVisit) ?? 0) - (wallSortValue(a.lastVisit) ?? 0));
 }
 
 export function personMap(people) {
   return new Map((people || []).map(p => [p.id, p]));
 }
 
+function wallParts(value) {
+  if (typeof value !== 'string') return null;
+  const m = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const parts = {
+    year: Number(m[1]), month: Number(m[2]), day: Number(m[3]),
+    hour: Number(m[4]), minute: Number(m[5]), second: Number(m[6] || 0),
+  };
+  const d = new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second));
+  if (d.getUTCFullYear() !== parts.year || d.getUTCMonth() !== parts.month - 1 || d.getUTCDate() !== parts.day ||
+      d.getUTCHours() !== parts.hour || d.getUTCMinutes() !== parts.minute || d.getUTCSeconds() !== parts.second) return null;
+  return parts;
+}
+
+function wallDate(parts) {
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second));
+}
+
+function wallSortValue(value) {
+  const parts = wallParts(value);
+  return parts ? wallDate(parts).getTime() : null;
+}
+
+export function photoDisplayDate(photo) {
+  return photo?.capturedLocal || photo?.capturedAt || null;
+}
+
+export function photoSortValue(photo) {
+  const at = Date.parse(photo?.capturedAt || '');
+  if (Number.isFinite(at)) return at;
+  return wallSortValue(photo?.capturedLocal) ?? 0;
+}
+
+export function photoYear(photo) {
+  const parts = wallParts(photo?.capturedLocal);
+  if (parts) return parts.year;
+  return yearOf(photo?.capturedAt);
+}
+
+export function photoDateInput(photo) {
+  const local = photo?.capturedLocal;
+  const parts = wallParts(local);
+  if (parts) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}`;
+  }
+  return dateInputValue(photo?.capturedAt);
+}
+
+export function formatPhotoDate(photo, opts = {}) {
+  return formatDate(photoDisplayDate(photo), opts);
+}
+
+export function formatPhotoDateDots(photo) {
+  return formatDateDots(photoDisplayDate(photo));
+}
+
+export function formatPhotoDateTime(photo) {
+  return formatDateTime(photoDisplayDate(photo));
+}
+
 export function formatDate(value, opts = {}) {
   if (!value) return '未知日期';
+  const parts = wallParts(value);
+  if (parts) return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric', ...opts, timeZone: 'UTC' }).format(wallDate(parts));
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '未知日期';
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric', ...opts }).format(d);
@@ -94,6 +157,8 @@ export function formatDate(value, opts = {}) {
 
 export function formatDateDots(value) {
   if (!value) return '—';
+  const parts = wallParts(value);
+  if (parts) return `${parts.year}.${String(parts.month).padStart(2, '0')}.${String(parts.day).padStart(2, '0')}`;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
   const pad = n => String(n).padStart(2, '0');
@@ -102,6 +167,8 @@ export function formatDateDots(value) {
 
 export function formatDateTime(value) {
   if (!value) return '—';
+  const parts = wallParts(value);
+  if (parts) return `${parts.year}.${String(parts.month).padStart(2, '0')}.${String(parts.day).padStart(2, '0')} ${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
   const pad = n => String(n).padStart(2, '0');
@@ -110,6 +177,8 @@ export function formatDateTime(value) {
 
 export function dateInputValue(value) {
   if (!value) return '';
+  const parts = wallParts(value);
+  if (parts) return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}T${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
   const pad = n => String(n).padStart(2, '0');
@@ -117,15 +186,17 @@ export function dateInputValue(value) {
 }
 
 export function yearOf(value) {
+  const parts = wallParts(value);
+  if (parts) return parts.year;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.getFullYear();
 }
 
 export function dateRange(photos) {
   if (!photos?.length) return '—';
-  const sorted = [...photos].sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
-  const a = yearOf(sorted[0].capturedAt);
-  const b = yearOf(sorted[sorted.length - 1].capturedAt);
+  const sorted = [...photos].sort((a, b) => photoSortValue(a) - photoSortValue(b));
+  const a = photoYear(sorted[0]);
+  const b = photoYear(sorted[sorted.length - 1]);
   if (a === b) return String(a);
   return `${a} — ${b}`;
 }

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import Modal from './Modal.jsx';
 import LocationFields from './LocationFields.jsx';
-import { cx, dateInputValue, formatBytes, formatDate, formatDateTime, initials, personMap, placeLabel, parseTags, shortPlace } from '../lib/utils.js';
+import { cx, formatBytes, formatPhotoDate, formatPhotoDateTime, initials, personMap, photoDateInput, placeLabel, parseTags, shortPlace } from '../lib/utils.js';
 
 export default function PhotoModal({ open, photo, people, regions, onClose, onSave, onDelete, onNotice }) {
   const [editing, setEditing] = useState(false);
@@ -28,7 +28,7 @@ export default function PhotoModal({ open, photo, people, regions, onClose, onSa
   const startEdit = () => {
     setForm({
       ...photo,
-      date: dateInputValue(photo.capturedAt),
+      date: photoDateInput(photo),
       tags: (photo.tags || []).join(', '),
       lat: photo.lat ?? '', lng: photo.lng ?? '',
     });
@@ -41,10 +41,9 @@ export default function PhotoModal({ open, photo, people, regions, onClose, onSa
     if (!form?.title?.trim()) { onNotice?.('请填写影像标题'); return; }
     setSaving(true);
     try {
-      await onSave(photo.id, {
+      const dateChanged = form.date !== photoDateInput(photo);
+      const payload = {
         title: form.title,
-        capturedAt: form.date ? new Date(form.date).toISOString() : photo.capturedAt,
-        dateSource: form.date !== dateInputValue(photo.capturedAt) ? 'manual' : photo.dateSource,
         country: form.country, countryCode: form.countryCode,
         province: form.province, city: form.city, district: form.district,
         locationName: form.locationName,
@@ -55,7 +54,14 @@ export default function PhotoModal({ open, photo, people, regions, onClose, onSa
         notes: form.notes,
         camera: form.camera, lens: form.lens, aperture: form.aperture,
         shutter: form.shutter, iso: form.iso === '' ? null : Number(form.iso), focalLength: form.focalLength,
-      });
+      };
+      if (dateChanged) {
+        payload.capturedAt = form.date ? new Date(form.date).toISOString() : null;
+        payload.capturedLocal = form.date ? `${form.date}:00` : null;
+        payload.tzOffset = null;
+        payload.dateSource = 'manual';
+      }
+      await onSave(photo.id, payload);
       setEditing(false);
     } catch (e) { onNotice?.(e.message); }
     finally { setSaving(false); }
@@ -96,7 +102,7 @@ export default function PhotoModal({ open, photo, people, regions, onClose, onSa
           <div className="viewer-caption">
             <span>{shortPlace(photo)}</span>
             <strong>{photo.title}</strong>
-            <small>{formatDateTime(photo.capturedAt)}</small>
+            <small>{formatPhotoDateTime(photo)}</small>
           </div>
           <a className="viewer-download" href={photo.original || photo.image} download={photo.original ? undefined : `${photo.title}.webp`} title="下载原图">
             <Download size={16} />
@@ -108,10 +114,10 @@ export default function PhotoModal({ open, photo, people, regions, onClose, onSa
           {!editing ? (
             <>
               <div className="viewer-panel-head">
-                <div className="eyebrow"><span>IMAGE RECORD</span><span className={cx('source-chip', photo.dateSource)}>{photo.dateSource === 'exif' ? 'EXIF VERIFIED' : photo.dateSource === 'file' ? 'FILE DATE' : 'MANUAL'}</span></div>
+                <div className="eyebrow"><span>IMAGE RECORD</span><span className={cx('source-chip', photo.dateSource)}>{photo.dateSource === 'exif' ? 'EXIF VERIFIED' : photo.dateSource === 'exif-local' ? 'EXIF LOCAL' : photo.dateSource === 'file' ? 'FILE DATE' : 'MANUAL'}</span></div>
                 <h2>{photo.title}</h2>
                 <p className="viewer-place"><MapPin size={13} /> {placeLabel(photo, { country: true }) || '未记录地点'}</p>
-                <div className="viewer-date"><CalendarDays size={13} /> {formatDate(photo.capturedAt, { weekday: 'short' })}</div>
+                <div className="viewer-date"><CalendarDays size={13} /> {formatPhotoDate(photo, { weekday: 'short' })}</div>
               </div>
 
               <div className="viewer-people">

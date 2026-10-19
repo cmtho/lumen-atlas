@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Filter, Images, MapPin, Search, SlidersHorizontal, Sparkles, UserRound, X } from 'lucide-react';
-import { cx, formatDate, formatDateDots, initials, personMap, shortPlace, yearOf } from '../lib/utils.js';
+import { cx, formatPhotoDate, formatPhotoDateDots, initials, personMap, photoSortValue, photoYear, shortPlace } from '../lib/utils.js';
 
 function aspectOf(photo) {
   const m = String(photo.dimensions || '').match(/(\d+)\s*[×x]\s*(\d+)/);
@@ -13,14 +13,14 @@ function aspectOf(photo) {
 
 export default function ArchiveView({ photos, places, people, filter, setFilter, onOpenPhoto, onUpload, onClearFilter, onPersonFilter }) {
   const peopleById = useMemo(() => personMap(people), [people]);
-  const years = useMemo(() => [...new Set(photos.map(p => yearOf(p.capturedAt)).filter(Boolean))].sort((a, b) => b - a), [photos]);
+  const years = useMemo(() => [...new Set(photos.map(photoYear).filter(Boolean))].sort((a, b) => b - a), [photos]);
   const provinces = useMemo(() => [...new Set(photos.map(p => p.province).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN')), [photos]);
   const placeOptions = useMemo(() => places.filter(p => !filter.province || p.province === filter.province), [places, filter.province]);
 
   const filtered = useMemo(() => {
     return photos.filter(p => {
       if (filter.personId && !p.personIds?.includes(filter.personId)) return false;
-      if (filter.year && yearOf(p.capturedAt) !== Number(filter.year)) return false;
+      if (filter.year && photoYear(p) !== Number(filter.year)) return false;
       if (filter.province && p.province !== filter.province) return false;
       if (filter.placeKey) {
         const key = [p.countryCode || p.country, p.province, p.city, p.district].filter(Boolean).join('|') || `spot:${p.locationName}`;
@@ -32,7 +32,7 @@ export default function ArchiveView({ photos, places, people, filter, setFilter,
         if (!hay.includes(term)) return false;
       }
       return true;
-    }).sort((a, b) => new Date(b.capturedAt) - new Date(a.capturedAt));
+    }).sort((a, b) => photoSortValue(b) - photoSortValue(a));
   }, [photos, filter, peopleById]);
 
   const hasFilter = filter.personId || filter.year || filter.placeKey || filter.province || filter.q;
@@ -114,12 +114,12 @@ export default function ArchiveView({ photos, places, people, filter, setFilter,
                         <span className="photo-hover">
                           <span className="photo-hover-top"><MapPin size={12} /> {shortPlace(p)}</span>
                           <strong>{p.title}</strong>
-                          <span className="photo-hover-foot"><span>{formatDateDots(p.capturedAt)}</span><span>{p.camera || 'UNKNOWN CAMERA'}</span></span>
+                          <span className="photo-hover-foot"><span>{formatPhotoDateDots(p)}</span><span>{p.camera || 'UNKNOWN CAMERA'}</span></span>
                         </span>
                         {p.demo && <span className="demo-badge">SAMPLE</span>}
                       </span>
                       <span className="photo-caption">
-                        <span><strong>{p.title}</strong><small>{shortPlace(p)} · {formatDate(p.capturedAt, { year: 'numeric', month: '2-digit', day: '2-digit' })}</small></span>
+                        <span><strong>{p.title}</strong><small>{shortPlace(p)} · {formatPhotoDate(p, { year: 'numeric', month: '2-digit', day: '2-digit' })}</small></span>
                         {peopleIn.length > 0 && (
                           <span className="caption-people">
                             {peopleIn.slice(0, 3).map(person => <i key={person.id} style={{ background: person.color }} title={person.name}>{initials(person.name)}</i>)}

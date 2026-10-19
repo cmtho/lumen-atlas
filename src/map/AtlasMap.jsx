@@ -5,6 +5,7 @@ import { buildMapStyle, mapPalette } from './style.js';
 import { Compass, LocateFixed, Map as MapIcon, Minus, Plus, Orbit } from 'lucide-react';
 import AmapView from './AmapView.jsx';
 import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/coords.js';
+import { photoDisplayDate, photoSortValue } from '../lib/utils.js';
 
 const EMPTY = { type: 'FeatureCollection', features: [] };
 
@@ -138,7 +139,7 @@ function photoData(photos) {
         title: p.title || '',
         thumb: p.thumb || '',
         place: [p.city, p.district].filter(Boolean).join(' · ') || p.province || p.country || '',
-        date: p.capturedAt || '',
+        date: photoDisplayDate(p) || '',
         person: p.personIds?.length || 0,
       },
       geometry: { type: 'Point', coordinates: [Number(p.lng), Number(p.lat)] },
@@ -150,7 +151,7 @@ function photoData(photos) {
 function journeyData(photos) {
   const sorted = [...(photos || [])]
     .filter(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
-    .sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
+    .sort((a, b) => photoSortValue(a) - photoSortValue(b));
   if (sorted.length < 2) return EMPTY;
   return {
     type: 'Feature',

@@ -1,5 +1,9 @@
 import crypto from 'node:crypto';
 
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction && !process.env.ATLAS_SESSION_SECRET) {
+  throw new Error('ATLAS_SESSION_SECRET is required when NODE_ENV=production. Generate one with: openssl rand -hex 32');
+}
 const SECRET = process.env.ATLAS_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const COOKIE = 'atlas_user';
 const MAX_AGE = 60 * 60 * 24 * 30;

@@ -32,6 +32,16 @@ function cameraName(make, model) {
 function baseTitle(name) {
   return name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || '未命名影像';
 }
+function exifWallInput(value) {
+  if (typeof value !== 'string') return '';
+  const m = value.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}` : '';
+}
+function exifOffset(value) {
+  if (typeof value !== 'string') return null;
+  const m = value.trim().match(/^([+-])(\d{2}):?(\d{2})$/);
+  return m && Number(m[2]) < 24 && Number(m[3]) < 60 ? `${m[1]}${m[2]}:${m[3]}` : null;
+}
 function blankDraft(file, initialPersonId, initialLocation = null) {
   return {
     id: uid(), file, preview: URL.createObjectURL(file), title: baseTitle(file.name),
@@ -42,7 +52,7 @@ function blankDraft(file, initialPersonId, initialLocation = null) {
     lat: initialLocation?.lat ?? '', lng: initialLocation?.lng ?? '',
     personIds: initialPersonId ? [initialPersonId] : [],
     tags: '', notes: '', camera: '', lens: '', aperture: '', shutter: '', iso: '',
-    focalLength: '', dimensions: '', exifDate: false, exifGps: false, geocoding: false,
+    focalLength: '', dimensions: '', tzOffset: null, exifDate: false, exifGps: false, geocoding: false,
     geoResolved: !!initialLocation, status: initialLocation ? 'ready' : 'pending',
   };
 }
@@ -115,11 +125,16 @@ export default function UploadModal({
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       let x = null;
+      let raw = null;
       try {
         x = await exifr.parse(file, { gps: true, exif: true, tiff: true, ifd0: true, iptc: true, translateValues: true, reviveValues: true });
+        raw = await exifr.parse(file, { exif: true, tiff: true, ifd0: true, translateValues: false, reviveValues: false });
       } catch {}
       if (x) {
         const date = x.DateTimeOriginal || x.CreateDate || x.ModifyDate;
+        const rawDate = raw?.DateTimeOriginal || raw?.CreateDate || raw?.ModifyDate;
+        const wallDate = exifWallInput(rawDate);
+        const offset = exifOffset(raw?.OffsetTimeOriginal || raw?.OffsetTime || raw?.OffsetTimeDigitized || x.OffsetTimeOriginal);
         const patch = {
           camera: cameraName(x.Make, x.Model) || '',
           lens: x.LensModel || x.Lens || '',
@@ -128,10 +143,18 @@ export default function UploadModal({
           iso: Number.isFinite(Number(x.ISO)) ? String(Number(x.ISO)) : '',
           focalLength: x.FocalLength ? `${trimNum(x.FocalLength, 1)} mm` : '',
           dimensions: (x.ExifImageWidth || x.ImageWidth) && (x.ExifImageHeight || x.ImageHeight) ? `${x.ExifImageWidth || x.ImageWidth} × ${x.ExifImageHeight || x.ImageHeight}` : '',
-          exifDate: !!date,
+          exifDate: !!(wallDate || date),
           exifGps: Number.isFinite(x.latitude) && Number.isFinite(x.longitude),
         };
-        if (date) { patch.date = dateInputValue(date); patch.dateSource = 'exif'; }
+        if (wallDate) {
+          patch.date = wallDate;
+          patch.dateSource = offset ? 'exif' : 'exif-local';
+          patch.tzOffset = offset;
+        } else if (date) {
+          patch.date = dateInputValue(date);
+          patch.dateSource = 'exif';
+          patch.tzOffset = null;
+        }
         if (Number.isFinite(x.latitude) && Number.isFinite(x.longitude)) { patch.lat = Number(x.latitude.toFixed(6)); patch.lng = Number(x.longitude.toFixed(6)); }
         Object.assign(local[i], patch);
         updateDraft(base[i].id, patch);
@@ -201,7 +224,11 @@ export default function UploadModal({
     setProgress(0);
     const metadata = drafts.map(d => ({
       title: d.title,
-      date: d.date ? new Date(d.date).toISOString() : new Date(d.file.lastModified).toISOString(),
+      ...(d.dateSource === 'manual' ? {
+        date: d.date ? new Date(d.date).toISOString() : undefined,
+        capturedLocal: d.date ? `${d.date}:00` : undefined,
+        tzOffset: null,
+      } : {}),
       dateSource: d.dateSource,
       country: d.country,
       countryCode: (d.countryCode || '').toLowerCase(),
@@ -226,7 +253,13 @@ export default function UploadModal({
     try {
       const result = await uploadPhotos(drafts.map(d => d.file), metadata, setProgress);
       onComplete?.(result.photos || []);
-      onNotice?.(`${result.photos?.length || drafts.length} 张影像已写入你的星图`);
+      const failures = result.failures || [];
+      if (failures.length) {
+        const detail = failures.slice(0, 3).map(f => `${f.file}: ${f.reason}`).join('；');
+        onNotice?.(`${result.photos?.length || 0} 张成功，${failures.length} 张失败：${detail}`);
+      } else {
+        onNotice?.(`${result.photos?.length || drafts.length} 张影像已写入你的星图`);
+      }
       reset();
       onClose?.();
     } catch (e) {

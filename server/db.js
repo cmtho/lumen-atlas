@@ -9,6 +9,7 @@ export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 export const THUMB_DIR = path.join(DATA_DIR, 'thumbs');
 export const ORIGINAL_DIR = path.join(DATA_DIR, 'originals');
 export const AVATAR_DIR = path.join(DATA_DIR, 'avatars');
+export const TMP_DIR = path.join(DATA_DIR, 'tmp');
 export const DB_FILE = path.join(DATA_DIR, 'db.json');
 const OWNER_LOGIN_FILE = path.join(DATA_DIR, 'owner-login.txt');
 
@@ -93,7 +94,7 @@ export const seedDatabase = () => ({
 });
 
 export async function ensureDataDirs() {
-  await Promise.all([UPLOAD_DIR, THUMB_DIR, ORIGINAL_DIR, AVATAR_DIR].map(d => fs.mkdir(d, { recursive: true })));
+  await Promise.all([UPLOAD_DIR, THUMB_DIR, ORIGINAL_DIR, AVATAR_DIR, TMP_DIR].map(d => fs.mkdir(d, { recursive: true })));
 }
 
 async function writeOwnerCredentials(username, password) {
@@ -170,15 +171,19 @@ export async function loadDb() {
 
 async function persist(data) {
   const tmp = `${DB_FILE}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2));
+  await fs.writeFile(tmp, JSON.stringify(data));
   await fs.rename(tmp, DB_FILE);
+  const stat = await fs.stat(DB_FILE);
+  if (!stat.size) throw new Error(`Database write failed: ${DB_FILE} is empty`);
 }
 
 export function mutate(mutator) {
   writeQueue = writeQueue.catch(() => {}).then(async () => {
     const db = await loadDb();
-    const result = await mutator(db);
-    await persist(db);
+    const draft = structuredClone(db);
+    const result = await mutator(draft);
+    await persist(draft);
+    cache = draft;
     return result;
   });
   return writeQueue;
