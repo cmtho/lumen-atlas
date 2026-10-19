@@ -224,9 +224,9 @@ export default function UploadModal({
     setProgress(0);
     const metadata = drafts.map(d => ({
       title: d.title,
-      ...(d.dateSource === 'manual' ? {
+      ...(d.dateSource === 'manual' || d.dateSource === 'file' ? {
         date: d.date ? new Date(d.date).toISOString() : undefined,
-        capturedLocal: d.date ? `${d.date}:00` : undefined,
+        capturedLocal: d.date ? `${d.date.length === 16 ? d.date : d.date.slice(0, 16)}:00` : undefined,
         tzOffset: null,
       } : {}),
       dateSource: d.dateSource,

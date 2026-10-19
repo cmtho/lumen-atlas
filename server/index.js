@@ -239,14 +239,15 @@ function normalizePhotoInput(meta, exif, file, prepared, people, userId) {
     const reg = lookupRegionCenter(province, city, district);
     if (reg?.center) { lng = reg.center[0]; lat = reg.center[1]; }
   }
-  const manualDate = meta.date && (meta.dateSource === 'manual' || !meta.dateSource) ? timestamp(meta.date) : null;
+  const manualLike = meta.date && (meta.dateSource === 'manual' || meta.dateSource === 'file' || !meta.dateSource);
+  const manualDate = manualLike ? timestamp(meta.date) : null;
   let capture;
   if (manualDate) {
     const rawLocal = safeText(meta.capturedLocal, 19);
     const local = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(rawLocal)
       ? `${rawLocal}${rawLocal.length === 16 ? ':00' : ''}`
       : localWallFromDate(manualDate);
-    capture = { capturedAt: manualDate, capturedLocal: local, tzOffset: normalizeOffset(meta.tzOffset), dateSource: 'manual' };
+    capture = { capturedAt: manualDate, capturedLocal: local, tzOffset: normalizeOffset(meta.tzOffset), dateSource: meta.dateSource === 'file' ? 'file' : 'manual' };
   } else {
     capture = resolveCaptureTime(exif, file.lastModified);
   }
@@ -625,15 +626,24 @@ app.post('/api/photos', upload.array('files', 30), async (req, res, next) => {
   try {
     if (!req.files?.length) return res.status(400).json({ error: '请选择至少一张照片。' });
     let metas = [];
-    try { metas = JSON.parse(req.body.metadata || '[]'); } catch { metas = []; }
+    try {
+      metas = JSON.parse(req.body.metadata || '[]');
+    } catch {
+      await cleanupUploadedFiles(req);
+      return res.status(400).json({ error: 'metadata 不是合法的 JSON' });
+    }
     if (!Array.isArray(metas)) metas = [];
+    if (req.files.length > 1 && !metas.length) {
+      await cleanupUploadedFiles(req);
+      return res.status(400).json({ error: '缺少照片元数据，请从上传页面重新提交' });
+    }
     const db = await loadDb();
     const people = db.people.filter(p => p.userId === req.user.id);
 
     const results = await runWithLimit(req.files, 2, async (file, index) => {
       let prepared = null;
       try {
-        file.lastModified = Number(metas[index]?.lastModified) || Date.now();
+        file.lastModified = Number(metas[index]?.lastModified) || file.lastModified;
         const exif = await readExif(await fs.readFile(file.path));
         prepared = await prepareImage(file);
         let photo = normalizePhotoInput(
